@@ -98,6 +98,7 @@ declare
   v_first_seen boolean;
   v_changed boolean;
   v_old_hash text;
+  v_old jsonb;
   v_new jsonb;
   v_payload jsonb;
   v_post_index integer := 0;

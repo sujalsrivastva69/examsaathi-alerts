@@ -1,0 +1,17 @@
+import { Router } from "express";
+import { z } from "zod";
+import { saveVacancyAction } from "../controllers/vacancy-action.controller.js";
+import { authenticate } from "../middleware/authenticate.js";
+import { validateRequest } from "../middleware/validate-request.js";
+import { vacancyIdParamsSchema } from "../utils/vacancy-schema.js";
+
+const actionSchema = z.object({ status: z.enum(["applied", "not_interested"]) }).strict();
+
+export const vacancyActionRouter = Router();
+vacancyActionRouter.use(authenticate);
+vacancyActionRouter.put(
+  "/:id",
+  validateRequest(vacancyIdParamsSchema, "params"),
+  validateRequest(actionSchema),
+  saveVacancyAction,
+);

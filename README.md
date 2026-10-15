@@ -6,70 +6,36 @@ A mobile-first government vacancy alert platform for Indian job aspirants. The r
 
 ```text
 examnotify/
-├── .gitignore
-├── .prettierrc.json
-├── README.md
-├── eslint.config.js
-├── package.json                 # npm workspaces and shared scripts
+├── package.json                  # npm workspaces and shared scripts
 ├── client/
 │   ├── .env.example
-│   ├── index.html
-│   ├── package.json
-│   ├── postcss.config.js
-│   ├── tailwind.config.js
-│   ├── tsconfig.app.json
-│   ├── tsconfig.json
-│   ├── tsconfig.node.json
-│   ├── vite.config.ts
 │   └── src/
-│       ├── App.tsx
-│       ├── i18n.ts
-│       ├── index.css
-│       └── main.tsx
+│       ├── admin/                 # vacancy editor, ingestion review, notifications
+│       ├── auth/                  # Supabase authentication
+│       ├── candidate/             # dashboard, vacancy detail, alert settings
+│       ├── profile/
+│       ├── public/
+│       ├── tools/                # browser-side free tools
+│       └── lib/
 ├── server/
 │   ├── .env.example
 │   ├── app.js
-│   ├── config/
-│   │   └── env.js
-│   ├── controllers/
-│   │   └── health.controller.js
-│   ├── index.js
-│   ├── middleware/
-│   │   ├── error-handler.js
-│   │   ├── not-found.js
-│   │   └── validate-request.js
-│   ├── package.json
-│   ├── routes/
-│   │   └── health.routes.js
+│   ├── controllers/ routes/ middleware/
 │   ├── services/
-│   │   ├── health.service.js
+│   │   ├── ingestion/             # source registry, extraction, validation, scheduler
 │   │   ├── matching/
-│   │   │   ├── evaluate-vacancy.js
-│   │   │   └── match-persistence.service.js
-│   │   └── ingestion/
-│   │       ├── sources.config.js
-│   │       ├── source-fetcher.js
-│   │       ├── pdf-text.js
-│   │       ├── extraction-prompt.js
-│   │       ├── extraction-schema.js
-│   │       ├── llm-client.js
-│   │       ├── ingestion.service.js
-│   │       └── scheduler.js
+│   │   └── notifications/
 │   ├── tests/
-│   │   ├── ingestion/
-│   │   │   ├── fixtures/
-│   │   │   └── ingestion.test.js
-│   │   └── matching/
-│   │       └── evaluate-vacancy.test.js
+│   │   ├── ingestion/fixtures/    # five synthetic notices
+│   │   ├── matching/
+│   │   └── notifications/
 │   └── utils/
-│       └── app-error.js
-└── supabase/
-    └── migrations/
-        ├── 202610140001_profiles_and_notification_preferences.sql
-        ├── 202610140002_admin_vacancy_management.sql
-        ├── 202610140003_vacancy_ingestion.sql
-        ├── 202610140004_user_vacancy_matches.sql
-        └── 202610140005_notifications.sql
+├── supabase/migrations/           # ordered forward migrations
+├── shared/                       # shared age/date utilities
+├── e2e/                           # Playwright flows, including security/unsubscribe
+├── docs/BETA_LAUNCH.md
+├── render.yaml
+└── vercel.json
 ```
 
 ## Requirements
@@ -107,6 +73,26 @@ npm run dev:server
 
 The client runs at `http://localhost:5173`, the API at `http://localhost:3000`, and the health check is `GET http://localhost:3000/api/health`.
 
+### Safely preview public vacancies using the configured Supabase project
+
+If the client shows “API server is running” or vacancies cannot load, the Express API is not running. To preview public database-backed notices without starting scheduled ingestion/notification jobs or allowing API write requests, run the API in `LOCAL_VIEW_MODE` and the browser in `VITE_LOCAL_VIEW_MODE`. In this mode, the API's public vacancy routes still read verified, open records from the configured Supabase project. Auth, signup, profile, admin and other write flows are unavailable in the local preview. No migrations are applied.
+
+In one PowerShell terminal at the repository root, run:
+
+```powershell
+$env:LOCAL_VIEW_MODE = "true"
+npm run dev:server
+```
+
+Keep that terminal open. If the Vite client is already running, press `Ctrl+C` in its terminal to stop it. In a second PowerShell terminal at the repository root, run:
+
+```powershell
+$env:VITE_LOCAL_VIEW_MODE = "true"
+npm run dev:client
+```
+
+Open the Vite URL (usually `http://localhost:5173`). The two environment settings apply only to these terminal processes and do not overwrite `.env` files. `LOCAL_VIEW_MODE` blocks non-read API methods and prevents both schedulers from starting. The public vacancy API can still read public vacancy rows from the Supabase URL configured in `server/.env`; keep that file private. Stop the processes with `Ctrl+C` when finished.
+
 ## Validate and format
 
 ```sh
@@ -127,7 +113,7 @@ npm test
 
 ## Admin vacancy management
 
-Apply both SQL migrations to the Supabase project. The admin migration enables RLS on role, vacancy, change-history, audit, and synthetic preview-profile tables. The browser never receives an admin role flag: every `/api/admin/vacancies` request authenticates the Supabase token and looks up `user_roles` on the server.
+Apply the migrations in `supabase/migrations/` in order, only after reviewing the target database's migration history and taking the normal backup. Do not apply an unreviewed migration directly to the main project. Migration `202610150008` adds the expanded tracker; keep `TRACKER_LIFECYCLE_ENABLED=false` until it is applied. Migration `202610150009` adds optional candidate matching inputs; keep `PROFILE_MATCHING_FIELDS_ENABLED=false` until it is applied. The admin migration enables RLS on role, vacancy, change-history, audit, and synthetic preview-profile tables. The browser never receives an admin role flag: every `/api/admin/vacancies` request authenticates the Supabase token and looks up `user_roles` on the server.
 
 After creating the administrator account through Supabase Auth, grant it access using the Supabase SQL editor:
 
@@ -140,11 +126,23 @@ Then sign in and open `http://localhost:5173/admin`. Create a draft with an HTTP
 
 ## Automated vacancy ingestion
 
-Apply the third migration before using ingestion. The server runs ingestion on `INGESTION_CRON` (default every four hours); admins can also run it from `/admin/review`. The default `INGESTION_DRY_RUN=true` processes five local fake notices and makes no network, LLM, or database calls. For live ingestion, set `INGESTION_DRY_RUN=false`, configure `LLM_API_KEY`, and set a verified `RESEND_FROM_EMAIL` plus `ADMIN_ALERT_EMAIL` for failure alerts.
+The server runs ingestion on `INGESTION_CRON` (default every four hours); admins can also run it from `/admin/review`. The default `INGESTION_DRY_RUN=true` processes five local synthetic notices and makes no network, LLM, database, publication, or notification calls. Live ingestion additionally requires an explicitly reviewed and permitted source in `server/services/ingestion/sources.config.js`, `INGESTION_DRY_RUN=false`, and the server-only `LLM_API_KEY`. Sources without verified access permission stay disabled. Text extraction failures and scanned PDFs remain in the admin queue as `needs_manual_entry`; they are not sent to OCR. Add a verified `RESEND_FROM_EMAIL` and `ADMIN_ALERT_EMAIL` if repeated source-failure alerts are wanted.
 
-Source fetching requires both `enabled: true` and `terms_reviewed: true` in `server/services/ingestion/sources.config.js`. The SSC robots URL returned 404 and its terms URL served the generic homepage rather than terms; SSC is therefore listed but disabled until permission can be verified. UPSC returned HTTP 403 and is not configured or bypassed. No source is fetched while its access policy remains unverified. Active sources are checked against robots.txt at runtime and fetched with a descriptive User-Agent, a three-second minimum request interval, host allowlists, redirect limits, and response-size limits.
+The registry contains SSC and the owner-selected Employment News weekly Web Advertisement listing. They are both disabled: robots.txt returned 404 for each during review, and the retrieved policy/disclaimer material did not establish permission for automated fetching; a usable SSC notices feed was not verified. This is not a claim of real-source compatibility. Do not enable either source until access method and terms are confirmed. Permitted sources are checked against robots.txt and fetched with a descriptive User-Agent, a minimum request interval, host allowlists, redirect limits, and response-size limits.
 
-LLM output is strict JSON and every extracted value must include an exact sentence from the notice and a confidence score. Low-confidence, invalid, missing, or inconsistent values enter `/admin/review`; they are never auto-published. Each notice can produce multiple vacancy review items. Approval requires completed source/date/rule checkboxes and valid vacancy fields; approval and publication are one database transaction so a failure cannot leave an unpublished vacancy marked verified. PDF files are parsed in memory only; the original official URL is retained.
+LLM output is strict Zod-validated JSON. Every extracted value includes an exact source quote, an exact page/section label when available, and a confidence score. Invalid JSON and calendar dates are rejected; low-confidence, missing, conflicting, or unsupported evidence is flagged for manual review. Each notice can produce multiple vacancy review items. Approval uses the existing verification checklist and transactional status transitions; only the admin approval flow publishes, reevaluates matches, and enqueues idempotent notifications. The original notice URL, PDF URL, extraction metadata, and correction history are retained.
+
+### Run the ingestion dry run locally
+
+Configure the existing `.env.example` files for the client and server, keeping `INGESTION_DRY_RUN=true` in `server/.env`. Then, from the repository root:
+
+```powershell
+npm ci
+npm test
+npm run dev
+```
+
+The test suite and the **Run ingestion** button at `/admin/review` process the five local synthetic notices. In dry-run mode the pipeline makes no source, LLM, database-write, publication, or notification calls. Live ingestion also requires an admin account and a source that has been explicitly reviewed and permitted; neither registered source is enabled now.
 
 ## Eligibility matching
 
@@ -152,14 +150,18 @@ LLM output is strict JSON and every extracted value must include an exact senten
 
 ## Email notifications
 
-Apply migration 005 after migrations 001–004. Email alerts require the explicit email consent (`email_enabled`); needs-review alerts are a separate optional preference. `NOTIFICATION_DRY_RUN=true` is the safe default and writes rendered messages to the server log instead of contacting Resend. Set it to `false` to deliver. `NOTIFICATION_CRON` defaults to every five minutes and handles queue batches, 3-day/1-day reminders, and stale-verification flags. Resend delivery retries use exponential backoff for at most three attempts; permanently failed messages are listed at `/admin/notifications` for a manual retry. Set `API_URL` to the externally reachable Express base URL in deployments where it differs from `APP_URL`; it is used for signed unsubscribe links. Opening an unsubscribe link presents a confirmation page, while its POST endpoint supports one-click unsubscribe and turns off email consent without login. A user can save `applied` or `not_interested` against a vacancy through the authenticated `/api/vacancy-actions/:id` endpoint; those states suppress deadline reminders.
+Apply the required migrations in order. Email alerts require the explicit email consent (`email_enabled`); needs-review alerts are a separate optional preference. `NOTIFICATION_DRY_RUN=true` is the safe default and writes rendered messages to the server log instead of contacting Resend. Set it to `false` to deliver. `NOTIFICATION_CRON` defaults to every five minutes and handles queue batches, 3-day/1-day reminders, and stale-verification flags. Resend delivery retries use exponential backoff for at most three attempts; permanently failed messages are listed at `/admin/notifications` for a manual retry. Set `API_URL` to the externally reachable Express base URL in deployments where it differs from `APP_URL`; it is used for signed unsubscribe links. Opening an unsubscribe link presents a confirmation page, while its POST endpoint supports one-click unsubscribe and turns off email consent without login. The authenticated tracker supports saved, interested, application-started, submitted, admit-card, exam, result, and next-stage statuses, plus optional private notes. Submitted and not-interested applications are excluded from deadline reminders. Migration 008 preserves older `started` and `applied` statuses by mapping them to `application_started` and `submitted`. `TRACKER_LIFECYCLE_ENABLED` defaults to `false` and must only be set to `true` after migration 008 has been applied to that database; the previous tracker remains active while it is false.
 
 ## Candidate dashboard
 
 Apply migration 006 after migrations 001–005. Signed-in candidates can open `/dashboard` to filter preliminary matches and review their bilingual match explanations, notice/correction timeline, deadline, and application tracker. Tracker status changes are recorded with timestamps. `/notification-settings` controls email consent, immediate/daily/weekly delivery windows, and deadline reminders. Daily and weekly windows are 09:00 India Standard Time; reminder emails are suppressed when the reminder toggle is off. The candidate API returns only the signed-in user's matches, tracker data, and history.
 
+## Public vacancy browsing
+
+The public home page has a search form that opens `/jobs?q=...`. The listing page filters the database-backed, verified open notices by text, qualification, recruiting organization and state. `/jobs/:id` shows the notice dates, eligibility rules, last verification date and official links, and `/calendar` displays application opening/deadline dates for those same notices. `/preparation` links to the existing application checklist, profile and vacancy browsing flow; it clearly states that study plans and mock tests are not currently provided. Public vacancies come only from the admin-approved vacancy table; these screens do not use mock notices. The Employment News connector creates drafts only when live ingestion is explicitly enabled, so the public list remains empty until an administrator reviews and publishes verified vacancies. The public vacancy API is at `/api/public/vacancies` and `/api/public/vacancies/:id`.
+
 ## Beta launch readiness
 
 Migration 007 adds authenticated beta feedback storage and service-role-only Resend delivery-event storage. Configure the Resend webhook at `/api/webhooks/resend` with `RESEND_WEBHOOK_SECRET` before using provider bounce metrics. The feedback form is available at `/feedback`; static `/privacy`, `/terms`, and `/about` pages are English/Hindi. The privacy policy is a plain-language draft that needs legal review before public beta invitations.
 
-See [docs/BETA_LAUNCH.md](./docs/BETA_LAUNCH.md) for the security review snapshot, migration/deployment instructions for Cloudflare Pages and Render/Railway, exact environment variables, email domain setup, Playwright staging test setup, post-deploy smoke tests, and the weekly metrics query in `server/ops/weekly-beta-metrics.sql`. Run `npm run test:e2e` only against a dedicated disposable staging project; it creates accounts and changes database state.
+See [docs/BETA_LAUNCH.md](./docs/BETA_LAUNCH.md) for the security review snapshot, Vercel/Render deployment instructions, exact environment variables, email domain setup, Playwright staging test setup, post-deploy smoke tests, and the weekly metrics query in `server/ops/weekly-beta-metrics.sql`. Run `npm run test:e2e` only against a dedicated disposable staging project; it creates accounts and changes database state.

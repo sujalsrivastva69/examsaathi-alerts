@@ -17,6 +17,9 @@ type ProfileFormState = {
   date_of_birth: string;
   state: string;
   job_preferences: string[];
+  category: string | null;
+  discipline: string | null;
+  experience_years: number | null;
   email_consent: boolean;
   notify_needs_review: boolean;
   sms_consent: boolean;
@@ -84,11 +87,16 @@ const jobAreas = [
   "other",
 ] as const;
 
+const candidateCategories = ["general", "sc", "st", "obc", "ews", "pwd", "ex_serviceman"] as const;
+
 const emptyProfile: ProfileFormState = {
   education: "",
   date_of_birth: "",
   state: "",
   job_preferences: [],
+  category: null,
+  discipline: null,
+  experience_years: null,
   email_consent: false,
   notify_needs_review: false,
   sms_consent: false,
@@ -131,6 +139,7 @@ export function ProfileWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ProfileFormState>(emptyProfile);
+  const [matchingProfileFieldsEnabled, setMatchingProfileFieldsEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
@@ -149,11 +158,10 @@ export function ProfileWizard() {
       try {
         setFetching(true);
 
-        const profileResult = (await apiRequest<{ profile?: Partial<ProfileFormState> }>(
-          "/profile",
-        )) as {
+        const profileResult = await apiRequest<{
           profile?: Partial<ProfileFormState>;
-        };
+          matchingProfileFieldsEnabled?: boolean;
+        }>("/profile");
 
         const preferencesResult = (await apiRequest<{ preferences?: Partial<ProfileFormState> }>(
           "/notification-preferences",
@@ -163,6 +171,7 @@ export function ProfileWizard() {
 
         if (ignored) return;
 
+        setMatchingProfileFieldsEnabled(profileResult.matchingProfileFieldsEnabled === true);
         setForm((current) => ({
           ...current,
           education: profileResult.profile?.education ?? current.education,
@@ -171,6 +180,9 @@ export function ProfileWizard() {
           job_preferences: Array.isArray(profileResult.profile?.job_preferences)
             ? (profileResult.profile!.job_preferences as string[])
             : current.job_preferences,
+          category: profileResult.profile?.category ?? current.category,
+          discipline: profileResult.profile?.discipline ?? current.discipline,
+          experience_years: profileResult.profile?.experience_years ?? current.experience_years,
           email_consent: Boolean(preferencesResult.preferences?.email_consent ?? false),
           notify_needs_review: Boolean(preferencesResult.preferences?.notify_needs_review ?? false),
           sms_consent: Boolean(preferencesResult.preferences?.sms_consent ?? false),
@@ -258,6 +270,13 @@ export function ProfileWizard() {
           date_of_birth: form.date_of_birth,
           state: form.state,
           job_preferences: form.job_preferences,
+          ...(matchingProfileFieldsEnabled
+            ? {
+                category: form.category,
+                discipline: form.discipline?.trim() || null,
+                experience_years: form.experience_years,
+              }
+            : {}),
         },
       });
       await apiRequest("/notification-preferences", {
@@ -342,6 +361,28 @@ export function ProfileWizard() {
                     : "—"}
                 </dd>
               </div>
+              {matchingProfileFieldsEnabled && (
+                <>
+                  <div className="flex justify-between gap-3">
+                    <dt>{t("candidateCategory")}</dt>
+                    <dd className="font-medium text-ink">
+                      {form.category ? t(`candidateCategory_${form.category}`) : t("notProvided")}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>{t("candidateDiscipline")}</dt>
+                    <dd className="font-medium text-ink">{form.discipline || t("notProvided")}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>{t("candidateExperience")}</dt>
+                    <dd className="font-medium text-ink">
+                      {form.experience_years === null
+                        ? t("notProvided")
+                        : t("candidateExperienceYears", { count: form.experience_years })}
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </div>
           <div className="rounded-2xl border border-line bg-white p-4">
@@ -464,6 +505,56 @@ export function ProfileWizard() {
                 );
               })}
             </div>
+            {matchingProfileFieldsEnabled && (
+              <div className="space-y-4 border-t border-line pt-4">
+                <p className="text-sm font-semibold">{t("matchingDetailsOptional")}</p>
+                <label className="block text-sm font-medium">
+                  {t("candidateCategory")}
+                  <select
+                    value={form.category ?? ""}
+                    onChange={(event) => updateField("category", event.target.value || null)}
+                    className="mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-ink focus:border-forest focus:ring-2 focus:ring-forest/15"
+                  >
+                    <option value="">{t("notProvided")}</option>
+                    {candidateCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {t(`candidateCategory_${category}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <PrivacyNote text={t("candidateCategoryPrivacy")} />
+                </label>
+                <label className="block text-sm font-medium">
+                  {t("candidateDiscipline")}
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={form.discipline ?? ""}
+                    onChange={(event) => updateField("discipline", event.target.value || null)}
+                    className="mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-ink focus:border-forest focus:ring-2 focus:ring-forest/15"
+                  />
+                  <PrivacyNote text={t("candidateDisciplinePrivacy")} />
+                </label>
+                <label className="block text-sm font-medium">
+                  {t("candidateExperience")}
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    step={1}
+                    value={form.experience_years ?? ""}
+                    onChange={(event) =>
+                      updateField(
+                        "experience_years",
+                        event.target.value === "" ? null : Number(event.target.value),
+                      )
+                    }
+                    className="mt-1.5 w-full rounded-lg border border-line bg-white px-3.5 py-3 text-sm text-ink focus:border-forest focus:ring-2 focus:ring-forest/15"
+                  />
+                  <PrivacyNote text={t("candidateExperiencePrivacy")} />
+                </label>
+              </div>
+            )}
           </div>
         )}
 

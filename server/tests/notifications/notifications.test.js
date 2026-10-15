@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderVacancyEmail } from "../../services/notifications/email-templates.js";
 import { notificationIdempotencyKey } from "../../services/notifications/idempotency.js";
+import { shouldSuppressDeadlineReminder } from "../../services/notifications/reminder-policy.js";
 import {
   createUnsubscribeToken,
   verifyUnsubscribeToken,
@@ -95,8 +96,17 @@ test("HTML escapes untrusted notice text", () => {
     language: "en",
     vacancy: { ...shared.vacancy, title: "<script>alert(1)</script>" },
   });
+
   assert.doesNotMatch(email.html, /<script>/);
   assert.match(email.html, /&lt;script&gt;/);
+});
+
+test("submitted and not-interested applications suppress deadline reminders", () => {
+  assert.equal(shouldSuppressDeadlineReminder("submitted"), true);
+  assert.equal(shouldSuppressDeadlineReminder("applied"), true);
+  assert.equal(shouldSuppressDeadlineReminder("not_interested"), true);
+  assert.equal(shouldSuppressDeadlineReminder("application_started"), false);
+  assert.equal(shouldSuppressDeadlineReminder("interested"), false);
 });
 
 test("non-HTTPS application links fall back to the HTTPS official notice", () => {

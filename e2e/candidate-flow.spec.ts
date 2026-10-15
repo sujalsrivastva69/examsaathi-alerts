@@ -18,7 +18,7 @@ test.afterEach(async () => {
   }
 });
 
-test("candidate signs up, completes profile, sees a match and marks it applied", async ({
+test("candidate signs up, completes profile, sees a match and tracks application progress", async ({
   page,
 }) => {
   requireE2E([supabaseUrl, anonKey, fixtureVacancyId], "Supabase and fixture-vacancy");
@@ -51,10 +51,13 @@ test("candidate signs up, completes profile, sees a match and marks it applied",
   ).toBeVisible();
   await page.getByRole("link", { name: "Review vacancy" }).first().click();
   await expect(page.getByRole("heading", { name: "Match explanation" })).toBeVisible();
-  await page.getByRole("button", { name: "Applied", exact: true }).click();
+  await page.getByLabel("Recruitment progress").selectOption("submitted");
+  await page.getByLabel("Private notes (optional)").fill("Keep the submitted application receipt.");
+  await page.getByRole("button", { name: "Save tracker" }).click();
   await expect(page.getByText("Application status updated.")).toBeVisible();
   await expect(page.getByText("Current status")).toBeVisible();
-  await expect(page.getByText("Applied", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Submitted", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Keep the submitted application receipt.")).toBeVisible();
 
   await page.goto(`/feedback?vacancy_id=${encodeURIComponent(fixtureVacancyId!)}`);
   await page

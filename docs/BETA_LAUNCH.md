@@ -19,7 +19,7 @@ Authentication signup and login use Supabase Auth directly from the browser, not
 
    Confirm that migrations `202610140001` through `202610140007` are recorded as applied.
 
-3. In **Authentication → URL Configuration**, set the Site URL to the canonical Cloudflare Pages/custom-domain URL. Add exact redirect URLs for `/verify-email`, `/reset-password`, and any local development URL. Do not use a wildcard production redirect.
+3. In **Authentication → URL Configuration**, set the Site URL to the canonical Vercel/custom-domain URL. Add exact redirect URLs for `/verify-email`, `/reset-password`, and any local development URL. Do not use a wildcard production redirect.
 4. Set conservative signup/sign-in/OTP rate limits in **Authentication → Rate Limits**. Enable CAPTCHA/Turnstile protection if the plan and beta risk require it. The client talks directly to Supabase Auth, so these provider-side limits are the auth boundary.
 5. Create an administrator using Supabase Auth. Grant the role only to that account through the SQL editor:
 
@@ -31,33 +31,18 @@ Authentication signup and login use Supabase Auth directly from the browser, not
 6. Check RLS is enabled and the expected policies/grants exist for `profiles`, `notification_preferences`, `user_vacancy_matches`, `user_vacancy_actions`, `user_vacancy_action_history`, and `beta_feedback`. Confirm the queue, notification logs, feedback submissions, and provider event tables have no end-user read policies.
 7. Keep one API instance for beta if using the in-process cron scheduler. Do not configure more than one server replica until schedulers are moved to a single worker or distributed lease.
 
-## 2. Configure and deploy the Express API (Render or Railway)
+## 2. Configure and deploy the Express API (Render)
 
-Deploy the repository root so npm workspaces and the root lockfile are available.
+Deploy the repository root so npm workspaces and the root lockfile are available. The root `render.yaml` is a Blueprint starter configuration; import it from the Render dashboard and enter the environment values there. It keeps vacancy ingestion and email delivery in dry-run mode by default.
 
-**Render**
-
-- Create a Node web service from the repository.
-- Root directory: repository root.
-- Build command: `npm ci`.
-- Start command: `npm run start --workspace @examsaathi/server`.
-- Health-check path: `/api/health`.
-- Use one instance for beta while the cron scheduler runs in-process.
-
-**Railway**
-
-- Create a project from the repository and use the repository root as the service root.
-- Build command: `npm ci`.
-- Start command: `npm run start --workspace @examsaathi/server`.
-- Set the public service port through `PORT` (Railway may inject this automatically).
-- Expose `/api/health` as the service health check and use one replica while cron is in-process.
+The service runs the ingestion and notification schedulers in-process, so keep one instance. Render's free web service can sleep while idle; scheduled ingestion is not dependable while it is asleep. Use an always-on instance or a separate reliable scheduler before promising timely vacancy or deadline alerts.
 
 Set these **server-only** environment variables in the hosting provider:
 
 | Variable                    | Beta value                                                                                                                                             |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `NODE_ENV`                  | `production`                                                                                                                                           |
-| `PORT`                      | Provider-assigned port; Render/Railway normally inject it                                                                                              |
+| `PORT`                      | Provider-assigned port; Render injects it                                                                                                              |
 | `TRUST_PROXY_HOPS`          | `1` only after confirming the host terminates requests through exactly one trusted proxy and overwrites/normalizes forwarded IP headers; otherwise `0` |
 | `APP_URL`                   | Canonical browser origin, e.g. `https://beta.example.in` (no trailing slash)                                                                           |
 | `API_URL`                   | Public API origin, e.g. `https://api-beta.example.in` (no trailing slash)                                                                              |
@@ -70,7 +55,7 @@ Set these **server-only** environment variables in the hosting provider:
 | `UNSUBSCRIBE_TOKEN_SECRET`  | Random secret of at least 32 characters; keep stable across deploys                                                                                    |
 | `NOTIFICATION_DRY_RUN`      | `true` until end-to-end email checks pass; `false` only after approval                                                                                 |
 | `NOTIFICATION_CRON`         | `*/5 * * * *` for beta; in a disposable E2E project use `* * * * *`                                                                                    |
-| `INGESTION_DRY_RUN`         | `true` until a source is explicitly cleared and enabled                                                                                                |
+| `INGESTION_DRY_RUN`         | `true` until source access permission, parsing, and staging review are confirmed                                                                       |
 | `INGESTION_CRON`            | `0 */4 * * *`                                                                                                                                          |
 | `LLM_PROVIDER`              | `openai` if live ingestion is explicitly enabled                                                                                                       |
 | `LLM_API_KEY`               | Optional until live ingestion; server secret                                                                                                           |
@@ -78,13 +63,12 @@ Set these **server-only** environment variables in the hosting provider:
 | `LLM_BASE_URL`              | Optional; only for an approved OpenAI-compatible endpoint                                                                                              |
 | `ADMIN_ALERT_EMAIL`         | Monitored administrator mailbox; optional until ingestion alerts are enabled                                                                           |
 
-Use `NOTIFICATION_DRY_RUN=true` in the first deployment. Leave ingestion disabled/dry-run: currently no automated source is cleared for use. Do not put service-role, Resend, LLM, or webhook signing secrets in Cloudflare/Vite variables.
+Use `NOTIFICATION_DRY_RUN=true` in the first deployment. Ingestion remains in dry-run until each source's access method and permission are confirmed, parsing is tested against permitted official examples, and an operator explicitly sets `INGESTION_DRY_RUN=false`. The SSC and Employment News registry entries currently remain disabled because robots.txt returned 404 and the reviewed policy/disclaimer material did not establish automated-fetch permission. The SSC notices feed is also unverified. Do not claim compatibility or enable either source without that review. Scanned PDFs and extraction failures are saved for manual entry; the pipeline does not submit notices to OCR. Do not put service-role, Resend, LLM, or webhook signing secrets in Vercel/Vite variables.
 
-## 3. Build and deploy the client (Cloudflare Pages)
+## 3. Build and deploy the client (Vercel)
 
-1. Create a Pages project connected to the repository.
-2. Root directory: repository root. Build command: `npm ci && npm run build`. Build output directory: `client/dist`.
-3. Set the following Pages environment variables for production and preview environments:
+1. Import the repository into Vercel and keep the repository root as the project root. The root `vercel.json` configures the workspace build, `client/dist` output, and React Router SPA fallback.
+2. Add a canonical production domain and set these Vercel environment variables for production:
 
    | Variable                 | Value                                                      |
    | ------------------------ | ---------------------------------------------------------- |
@@ -93,8 +77,9 @@ Use `NOTIFICATION_DRY_RUN=true` in the first deployment. Leave ingestion disable
    | `VITE_SUPABASE_URL`      | Public Supabase project URL                                |
    | `VITE_SUPABASE_ANON_KEY` | Supabase publishable/anon key only                         |
 
-4. Add the custom domain and HTTPS. Use one canonical production origin because server CORS allows the exact `APP_URL`.
-5. Ensure the SPA fallback serves `index.html` for `/dashboard`, `/matches/*`, `/privacy`, `/terms`, and other client-side routes. Cloudflare Pages' default SPA behavior applies when there is no top-level `404.html`; test a direct reload on each route.
+3. Deploy once to obtain the Vercel production URL. Set that exact origin as Render's `APP_URL`, configure the remaining server values in Render, and deploy the API.
+4. Set `VITE_API_URL` to the Render URL plus `/api` (for example, `https://examsaathi-api.onrender.com/api`) and redeploy the Vercel client. The API's CORS policy allows only the exact `APP_URL`.
+5. Set the same canonical client URL as the Supabase Auth Site URL and add the required verification/reset redirect URLs. Test direct reloads on `/dashboard`, `/matches/*`, `/privacy`, `/terms`, and other client-side routes.
 6. Restrict preview deployments and never attach production secrets to untrusted preview builds.
 
 ## 4. Configure email delivery and event reporting

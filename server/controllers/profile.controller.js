@@ -1,8 +1,12 @@
+import { env } from "../config/env.js";
 import { getProfile, updateProfile } from "../services/profile.service.js";
 
 export async function readProfile(req, res, next) {
   try {
-    return res.status(200).json({ profile: await getProfile(req.user.id) });
+    return res.status(200).json({
+      profile: await getProfile(req.user.id),
+      matchingProfileFieldsEnabled: env.PROFILE_MATCHING_FIELDS_ENABLED,
+    });
   } catch (error) {
     return next(error);
   }

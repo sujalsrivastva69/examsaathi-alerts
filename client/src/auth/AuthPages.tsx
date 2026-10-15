@@ -10,13 +10,7 @@ const fieldClass =
 const buttonClass =
   "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-forest px-4 py-3 text-sm font-semibold text-white transition hover:bg-forest-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
-function AuthLayout({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function AuthLayout({ title, children }: { title: string; children: React.ReactNode }) {
   const { t, i18n } = useTranslation();
   const language = i18n.resolvedLanguage?.startsWith("hi") ? "hi" : "en";
 
@@ -29,13 +23,21 @@ function AuthLayout({
           </span>
           ExamSaathi <span className="font-medium text-muted">Alerts</span>
         </Link>
-        <button
-          type="button"
-          onClick={() => void i18n.changeLanguage(language === "en" ? "hi" : "en")}
-          className="rounded-lg px-3 py-2 text-sm font-semibold text-forest hover:bg-mint"
-        >
-          {t("language")}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/jobs"
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-forest hover:bg-mint"
+          >
+            {language === "hi" ? "भर्तियाँ" : "Browse jobs"}
+          </Link>
+          <button
+            type="button"
+            onClick={() => void i18n.changeLanguage(language === "en" ? "hi" : "en")}
+            className="rounded-lg px-3 py-2 text-sm font-semibold text-forest hover:bg-mint"
+          >
+            {t("language")}
+          </button>
+        </div>
       </div>
       <section className="rounded-2xl border border-line bg-white p-5 shadow-card sm:p-8">
         <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
@@ -48,7 +50,10 @@ function AuthLayout({
 
 function FormError({ children }: { children: React.ReactNode }) {
   return (
-    <p role="alert" className="rounded-lg border border-[#f1d4d0] bg-[#fff5f3] px-3 py-2.5 text-sm text-[#98483e]">
+    <p
+      role="alert"
+      className="rounded-lg border border-[#f1d4d0] bg-[#fff5f3] px-3 py-2.5 text-sm text-[#98483e]"
+    >
       {children}
     </p>
   );
@@ -201,7 +206,10 @@ export function LoginPage() {
         {error && <FormError>{error}</FormError>}
         <SubmitButton loading={loading} label={t("login")} />
       </form>
-      <Link to="/forgot-password" className="mt-4 block text-center text-sm font-medium text-forest hover:underline">
+      <Link
+        to="/forgot-password"
+        className="mt-4 block text-center text-sm font-medium text-forest hover:underline"
+      >
         {t("forgotPassword")}
       </Link>
       <p className="mt-5 text-center text-sm text-muted">
@@ -263,13 +271,29 @@ export function VerifyEmailPage() {
         />
         <span className="mt-1 block text-xs font-normal text-muted">{t("emailPrivacy")}</span>
       </label>
-      {error && <div className="mt-4"><FormError>{error}</FormError></div>}
-      {sent && <p className="mt-4 text-sm text-forest" role="status">{t("verificationResent")}</p>}
-      <button type="button" onClick={() => void resend()} className={`${buttonClass} mt-5`} disabled={loading}>
+      {error && (
+        <div className="mt-4">
+          <FormError>{error}</FormError>
+        </div>
+      )}
+      {sent && (
+        <p className="mt-4 text-sm text-forest" role="status">
+          {t("verificationResent")}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => void resend()}
+        className={`${buttonClass} mt-5`}
+        disabled={loading}
+      >
         {loading && <LoaderCircle size={16} className="animate-spin" />}
         {loading ? t("working") : t("resendVerification")}
       </button>
-      <Link to={user ? "/profile/setup" : "/login"} className="mt-5 block text-center text-sm font-semibold text-forest hover:underline">
+      <Link
+        to={user ? "/profile/setup" : "/login"}
+        className="mt-5 block text-center text-sm font-semibold text-forest hover:underline"
+      >
         {user ? t("continueToProfile") : t("backToLogin")}
       </Link>
     </AuthLayout>
@@ -321,10 +345,17 @@ export function ForgotPasswordPage() {
           <span className="mt-1 block text-xs font-normal text-muted">{t("emailPrivacy")}</span>
         </label>
         {error && <FormError>{error}</FormError>}
-        {sent && <p className="text-sm text-forest" role="status">{t("resetLinkSent")}</p>}
+        {sent && (
+          <p className="text-sm text-forest" role="status">
+            {t("resetLinkSent")}
+          </p>
+        )}
         <SubmitButton loading={loading} label={t("sendResetLink")} />
       </form>
-      <Link to="/login" className="mt-5 block text-center text-sm font-semibold text-forest hover:underline">
+      <Link
+        to="/login"
+        className="mt-5 block text-center text-sm font-semibold text-forest hover:underline"
+      >
         {t("backToLogin")}
       </Link>
     </AuthLayout>
@@ -360,7 +391,10 @@ export function ResetPasswordPage() {
     return (
       <AuthLayout title={t("resetTitle")}>
         <p className="mt-2 text-sm leading-6 text-muted">{t("resetExpired")}</p>
-        <Link to="/forgot-password" className="mt-5 block text-center text-sm font-semibold text-forest hover:underline">
+        <Link
+          to="/forgot-password"
+          className="mt-5 block text-center text-sm font-semibold text-forest hover:underline"
+        >
           {t("sendResetLink")}
         </Link>
       </AuthLayout>
@@ -385,7 +419,11 @@ export function ResetPasswordPage() {
           <span className="mt-1 block text-xs font-normal text-muted">{t("passwordPrivacy")}</span>
         </label>
         {error && <FormError>{error}</FormError>}
-        {complete && <p className="text-sm text-forest" role="status">{t("passwordUpdated")}</p>}
+        {complete && (
+          <p className="text-sm text-forest" role="status">
+            {t("passwordUpdated")}
+          </p>
+        )}
         <SubmitButton loading={loading} label={t("updatePassword")} />
       </form>
     </AuthLayout>

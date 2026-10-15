@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: examsaathi-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run start --workspace @examsaathi/server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS
+        value: "0"
+      - key: APP_URL
+        sync: false
+      - key: API_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: GOOGLE_CLOUD_VISION_API_KEY
+        sync: false
+      - key: INGESTION_DRY_RUN
+        value: "true"
+      - key: INGESTION_CRON
+        value: "0 */4 * * *"
+      - key: NOTIFICATION_DRY_RUN
+        value: "true"
+      - key: NOTIFICATION_CRON
+        value: "*/5 * * * *"

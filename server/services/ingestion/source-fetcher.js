@@ -111,9 +111,11 @@ export async function fetchSourceResource(source, inputUrl, { robots = false } =
   throw new Error("Source redirect limit exceeded");
 }
 
-export async function assertRobotsAllows(source, targetUrl) {
-  const response = await fetchSourceResource(source, source.robots_url, { robots: true });
-  if (response.status === 404) return;
+export async function assertRobotsAllows(source, targetUrl, fetchResource = fetchSourceResource) {
+  const response = await fetchResource(source, source.robots_url, { robots: true });
+  if (response.status === 404) {
+    throw new Error("robots.txt is unavailable; automated access permission is unverified");
+  }
   if (isPathDisallowed(response.text, new URL(targetUrl).pathname, source.user_agent)) {
     throw new Error(`robots.txt disallows access to ${new URL(targetUrl).pathname}`);
   }
@@ -144,7 +146,11 @@ function parseHtmlList(source, text) {
       content_hash: hashContent(`${url}\n${$(element).text().trim()}`),
     });
   });
-  return [...new Map(items.map((item) => [item.url, item])).values()];
+  const uniqueItems = new Map();
+  for (const item of items) {
+    if (!uniqueItems.has(item.url)) uniqueItems.set(item.url, item);
+  }
+  return [...uniqueItems.values()];
 }
 
 function parseRss(source, text) {

@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { createLocalViewModeGuard } from "./middleware/local-view-mode.js";
 import { notFound } from "./middleware/not-found.js";
 import { healthRouter } from "./routes/health.routes.js";
 import { profileRouter } from "./routes/profile.routes.js";
@@ -15,12 +16,14 @@ import { vacancyActionRouter } from "./routes/vacancy-action.routes.js";
 import { candidateDashboardRouter } from "./routes/candidate-dashboard.routes.js";
 import { betaFeedbackRouter } from "./routes/beta-feedback.routes.js";
 import { resendWebhookRouter } from "./routes/resend-webhook.routes.js";
+import { publicVacancyRouter } from "./routes/public-vacancy.routes.js";
 
 export const app = express();
 
 app.disable("x-powered-by");
 app.set("trust proxy", env.TRUST_PROXY_HOPS);
 app.use(helmet());
+app.use("/api", createLocalViewModeGuard(env.LOCAL_VIEW_MODE));
 app.use(
   cors({
     origin: env.APP_URL,
@@ -44,6 +47,7 @@ app.use(
 );
 
 app.use("/api/health", healthRouter);
+app.use("/api/public/vacancies", publicVacancyRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/notification-preferences", notificationPreferencesRouter);
 app.use("/api/unsubscribe", unsubscribeRouter);

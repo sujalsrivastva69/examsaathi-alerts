@@ -4,10 +4,15 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, apiRequest } from "../lib/api";
 import { CandidateLayout } from "./CandidateLayout";
-import type { ActionStatus, ExplanationItem, MatchDetail } from "./types";
+import {
+  actionStatuses,
+  legacyActionStatuses,
+  type ActionStatus,
+  type ExplanationItem,
+  type MatchDetail,
+} from "./types";
 
 const explanationKeys = ["qualification", "age", "discipline", "state", "experience"] as const;
-const actionStatuses: ActionStatus[] = ["interested", "started", "applied", "not_interested"];
 
 function dateTime(value: string | null, language: string) {
   if (!value) return "";
@@ -38,7 +43,9 @@ export function VacancyDetail() {
   const { t, i18n } = useTranslation();
   const [detail, setDetail] = useState<MatchDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savingAction, setSavingAction] = useState<ActionStatus | null>(null);
+  const [savingAction, setSavingAction] = useState(false);
+  const [selectedActionStatus, setSelectedActionStatus] = useState<ActionStatus>("interested");
+  const [actionNotes, setActionNotes] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const language = i18n.resolvedLanguage?.startsWith("hi") ? "hi" : "en";
@@ -59,21 +66,35 @@ export function VacancyDetail() {
     void loadDetail();
   }, [loadDetail]);
 
-  async function saveAction(status: ActionStatus) {
+  const action = detail?.action;
+  useEffect(() => {
+    if (!detail) return;
+    if (!action) {
+      setSelectedActionStatus(detail.trackerLifecycleEnabled ? "saved" : "interested");
+      setActionNotes("");
+      return;
+    }
+    setSelectedActionStatus(action.status);
+    setActionNotes(action.notes ?? "");
+  }, [action, detail]);
+
+  const trackerStatuses = detail?.trackerLifecycleEnabled ? actionStatuses : legacyActionStatuses;
+
+  async function saveAction() {
     try {
-      setSavingAction(status);
+      setSavingAction(true);
       setError("");
       setSuccess("");
       await apiRequest(`/matches/${encodeURIComponent(id)}/action`, {
         method: "PUT",
-        body: { status },
+        body: { status: selectedActionStatus, notes: actionNotes },
       });
       setSuccess(t("candidateActionSaved"));
       await loadDetail();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("candidateSaveError"));
     } finally {
-      setSavingAction(null);
+      setSavingAction(false);
     }
   }
 
@@ -251,20 +272,46 @@ export function VacancyDetail() {
             <section className="rounded-2xl border border-line bg-white p-5 shadow-card">
               <h2 className="text-lg font-bold">{t("candidateTrackerTitle")}</h2>
               <p className="mt-1 text-sm leading-6 text-muted">{t("candidateTrackerIntro")}</p>
-              <div className="mt-4 grid gap-2">
-                {actionStatuses.map((status) => (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() => void saveAction(status)}
-                    disabled={savingAction !== null}
-                    aria-pressed={detail.action?.status === status}
-                    className={`min-h-11 rounded-lg border px-3 text-left text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-forest disabled:opacity-60 ${detail.action?.status === status ? "border-forest bg-mint text-forest" : "border-line bg-white text-ink hover:bg-canvas"}`}
-                  >
-                    {savingAction === status ? t("working") : t(`candidateAction_${status}`)}
-                  </button>
-                ))}
-              </div>
+              <label className="mt-4 block text-xs font-semibold text-muted">
+                {t("candidateTrackerStatus")}
+                <select
+                  value={selectedActionStatus}
+                  onChange={(event) => {
+                    const status = trackerStatuses.find((value) => value === event.target.value);
+                    if (status) setSelectedActionStatus(status);
+                  }}
+                  className="mt-1.5 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+                >
+                  {trackerStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {t(`candidateAction_${status}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {detail.trackerLifecycleEnabled && (
+                <label className="mt-3 block text-xs font-semibold text-muted">
+                  {t("candidateTrackerNotes")}
+                  <textarea
+                    value={actionNotes}
+                    onChange={(event) => setActionNotes(event.target.value)}
+                    maxLength={2000}
+                    rows={4}
+                    className="mt-1.5 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+                  />
+                  <span className="mt-1 block text-xs font-normal leading-5 text-muted">
+                    {t("candidateTrackerNotesHelp")}
+                  </span>
+                </label>
+              )}
+              <button
+                type="button"
+                onClick={() => void saveAction()}
+                disabled={savingAction}
+                className="mt-3 min-h-11 w-full rounded-lg bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 disabled:opacity-60"
+              >
+                {savingAction ? t("working") : t("candidateSaveTracker")}
+              </button>
               {detail.action && (
                 <p className="mt-3 text-xs text-muted">
                   {t("candidateCurrentStatus")}: {t(`candidateAction_${detail.action.status}`)} ·{" "}

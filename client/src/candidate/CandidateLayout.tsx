@@ -27,6 +27,18 @@ export function CandidateLayout({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
           <nav className="flex flex-wrap items-center gap-1" aria-label={t("mainNavigation")}>
+            <NavLink to="/jobs" className={navClass}>
+              {language === "hi" ? "भर्तियाँ" : "Browse jobs"}
+            </NavLink>
+            <NavLink to="/calendar" className={navClass}>
+              {language === "hi" ? "कैलेंडर" : "Calendar"}
+            </NavLink>
+            <NavLink to="/preparation" className={navClass}>
+              {language === "hi" ? "तैयारी" : "Preparation"}
+            </NavLink>
+            <NavLink to="/tools" className={navClass}>
+              {language === "hi" ? "मुफ़्त टूल" : "Free tools"}
+            </NavLink>
             <NavLink to="/dashboard" className={navClass}>
               {t("candidateMatches")}
             </NavLink>

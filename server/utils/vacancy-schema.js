@@ -79,6 +79,11 @@ export const vacancyFieldsSchema = vacancyFieldsObject.refine(
 );
 
 export const vacancyCreateSchema = vacancyFieldsSchema;
+export const vacancyImportSchema = z
+  .object({
+    vacancies: z.array(vacancyCreateSchema).min(1).max(20),
+  })
+  .strict();
 export const vacancyPatchSchema = vacancyFieldsObject
   .partial()
   .strict()

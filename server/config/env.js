@@ -20,6 +20,10 @@ const envSchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.string().url().optional(),
   ),
+  GOOGLE_CLOUD_VISION_API_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
   INGESTION_DRY_RUN: z
     .enum(["true", "false"])
     .default("true")
@@ -42,6 +46,18 @@ const envSchema = z.object({
     .default("true")
     .transform((value) => value === "true"),
   NOTIFICATION_CRON: z.string().default("*/5 * * * *"),
+  TRACKER_LIFECYCLE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  LOCAL_VIEW_MODE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  PROFILE_MATCHING_FIELDS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   UNSUBSCRIBE_TOKEN_SECRET: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().min(32).optional(),

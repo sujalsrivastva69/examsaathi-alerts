@@ -142,6 +142,28 @@ const blankRules: RuleSet = {
   min_experience_years: 0,
 };
 
+const importExample = [
+  {
+    title: "Exact post title from the official notice",
+    recruiting_organization: "Recruiting organization",
+    official_source_url: "https://official.gov.in/recruitment/notice",
+    pdf_url: null,
+    application_start_date: "2026-10-14",
+    deadline: "2026-11-14",
+    age_cutoff_date: "2026-01-01",
+    rule_json: {
+      qualification_level: "secondary",
+      allowed_disciplines: [],
+      min_age: 18,
+      max_age: 40,
+      age_relaxations: { sc: 0, st: 0, obc: 0, ews: 0, pwd: 0, ex_serviceman: 0 },
+      domicile_states: [],
+      min_experience_years: 0,
+    },
+    verification_checklist: { source_checked: false, dates_checked: false, rules_checked: false },
+  },
+];
+
 const freshForm = (): VacancyForm => ({
   title: "",
   recruiting_organization: "",
@@ -184,6 +206,15 @@ export function AdminVacancies() {
     rule_basis: string;
   } | null>(null);
   const [extendDeadline, setExtendDeadline] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importSummary, setImportSummary] = useState("");
+  const [importFailures, setImportFailures] = useState<
+    { index: number; title: string; message: string }[]
+  >([]);
+  const [importCreated, setImportCreated] = useState<
+    { index: number; id: string; title: string }[]
+  >([]);
 
   useEffect(() => {
     const id = searchParams.get("edit");
@@ -318,6 +349,52 @@ export function AdminVacancies() {
     }
   }
 
+  async function importVacancies() {
+    setSaving(true);
+    setError("");
+    setImportSummary("");
+    setImportFailures([]);
+    setImportCreated([]);
+    try {
+      const parsed: unknown = JSON.parse(importText);
+      const vacancies = Array.isArray(parsed)
+        ? parsed
+        : (parsed as { vacancies?: unknown })?.vacancies;
+      if (!Array.isArray(vacancies)) {
+        throw new Error("Paste a JSON array of vacancies or an object with a vacancies array.");
+      }
+      const result = await apiRequest<{
+        created: { index: number; id: string; title: string }[];
+        failed: { index: number; title: string; message: string }[];
+      }>("/admin/vacancies/import", {
+        method: "POST",
+        body: { vacancies },
+      });
+      setImportSummary(
+        `${result.created.length} ${t("adminImportCreated")}; ${result.failed.length} ${t("adminImportFailed")}.`,
+      );
+      setImportFailures(result.failed);
+      setImportCreated(result.created);
+      await loadVacancies();
+    } catch (reason) {
+      setError(messageFor(reason));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function readImportFile(file: File | undefined) {
+    if (!file) return;
+    try {
+      setImportText(await file.text());
+      setImportSummary("");
+      setImportFailures([]);
+      setError("");
+    } catch (reason) {
+      setError(messageFor(reason));
+    }
+  }
+
   async function runAction(action: string, body?: unknown) {
     if (!selectedId) return;
     setSaving(true);
@@ -420,6 +497,17 @@ export function AdminVacancies() {
             <button
               type="button"
               onClick={() => {
+                setShowImport((current) => !current);
+                setImportSummary("");
+                setImportFailures([]);
+              }}
+              className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold text-ink"
+            >
+              {t("adminImportJson")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 selectVacancy(null);
                 setSelected(null);
                 setChanges([]);
@@ -433,6 +521,90 @@ export function AdminVacancies() {
             </button>
           </div>
         </header>
+
+        {showImport && (
+          <section className="mb-5 rounded-2xl border border-line bg-white p-4 shadow-card sm:p-6">
+            <h2 className="text-lg font-bold">{t("adminImportTitle")}</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{t("adminImportHelp")}</p>
+            <label className="mt-4 block text-sm font-medium">
+              {t("adminImportFile")}
+              <input
+                type="file"
+                accept=".json,application/json"
+                disabled={saving}
+                onChange={(event) => void readImportFile(event.target.files?.[0])}
+                className="mt-1.5 block w-full text-sm"
+              />
+            </label>
+            <label className="mt-4 block text-sm font-medium">
+              {t("adminImportPaste")}
+              <textarea
+                value={importText}
+                onChange={(event) => setImportText(event.target.value)}
+                disabled={saving}
+                rows={12}
+                spellCheck={false}
+                className="admin-input mt-1.5 font-mono text-xs"
+                placeholder='{"vacancies":[{"title":"...","recruiting_organization":"...","official_source_url":"https://...","pdf_url":"https://...","application_start_date":"YYYY-MM-DD","deadline":"YYYY-MM-DD","age_cutoff_date":"YYYY-MM-DD","rule_json":{"qualification_level":"secondary","allowed_disciplines":[],"min_age":18,"max_age":40,"age_relaxations":{"sc":0,"st":0,"obc":0,"ews":0,"pwd":0,"ex_serviceman":0},"domicile_states":[],"min_experience_years":0},"verification_checklist":{"source_checked":false,"dates_checked":false,"rules_checked":false}}]}'
+              />
+            </label>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={saving || !importText.trim()}
+                onClick={() => void importVacancies()}
+                className="rounded-lg bg-forest px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {saving ? t("working") : t("adminImportCreate")}
+              </button>
+              <p className="text-xs text-muted">{t("adminImportDraftOnly")}</p>
+            </div>
+            {importSummary && (
+              <div
+                className="mt-4 rounded-lg border border-line bg-canvas p-3 text-sm"
+                role="status"
+              >
+                {importSummary}
+                {importFailures.length > 0 && (
+                  <ul className="mt-2 list-inside list-disc">
+                    {importFailures.map((failure) => (
+                      <li key={`${failure.index}-${failure.title}`}>
+                        {failure.title}: {failure.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {importCreated.length > 0 && (
+                  <ul className="mt-2 list-inside list-disc">
+                    {importCreated.map((vacancy) => (
+                      <li key={vacancy.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowImport(false);
+                            selectVacancy(vacancy.id);
+                          }}
+                          className="font-semibold text-forest underline"
+                        >
+                          {vacancy.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            <details className="mt-4 rounded-lg border border-line p-3">
+              <summary className="cursor-pointer text-sm font-semibold">
+                {t("adminImportFormat")}
+              </summary>
+              <p className="mt-2 text-xs text-muted">{t("adminImportExampleWarning")}</p>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-canvas p-3 text-xs">
+                {JSON.stringify(importExample, null, 2)}
+              </pre>
+            </details>
+          </section>
+        )}
 
         {error && (
           <div className="mb-4">

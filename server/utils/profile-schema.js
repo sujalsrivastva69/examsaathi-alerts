@@ -62,6 +62,14 @@ export const jobCategories = [
   "other",
 ];
 
+export const candidateCategories = ["general", "sc", "st", "obc", "ews", "pwd", "ex_serviceman"];
+
+export const matchingProfileFields = z.object({
+  category: z.enum(candidateCategories).nullable().optional(),
+  discipline: z.string().trim().min(1).max(100).nullable().optional(),
+  experience_years: z.number().int().min(0).max(50).nullable().optional(),
+});
+
 function hasAgeBetween14And70(dateOfBirth) {
   const [year, month, day] = dateOfBirth.split("-").map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
@@ -93,9 +101,17 @@ export const profileSchema = z.object({
   date_of_birth: dateOfBirthSchema,
   state: z.enum(indianStates),
   job_preferences: z.array(z.enum(jobCategories)).min(1).max(10),
+  ...matchingProfileFields.shape,
 });
 
-export const profilePatchSchema = profileSchema
+export const profilePatchSchema = z
+  .object({
+    education: profileSchema.shape.education.optional(),
+    date_of_birth: profileSchema.shape.date_of_birth.optional(),
+    state: profileSchema.shape.state.optional(),
+    job_preferences: profileSchema.shape.job_preferences.optional(),
+    ...matchingProfileFields.shape,
+  })
   .partial()
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required");
 

@@ -2,6 +2,7 @@ import { supabaseAdmin } from "../../config/supabase.js";
 import { env } from "../../config/env.js";
 import { createUnsubscribeToken } from "./unsubscribe-token.js";
 import { renderVacancyEmail } from "./email-templates.js";
+import { shouldSuppressDeadlineReminder } from "./reminder-policy.js";
 
 const reminderTypes = new Set(["deadline_reminder_3d", "deadline_reminder_1d"]);
 const maxBatchSize = 25;
@@ -109,7 +110,7 @@ async function shouldSuppressForAction(item) {
     .eq("vacancy_id", item.vacancy_id)
     .maybeSingle();
   if (error) throw error;
-  return Boolean(data && ["applied", "not_interested"].includes(data.status));
+  return Boolean(data && shouldSuppressDeadlineReminder(data.status));
 }
 
 async function getVacancy(item) {

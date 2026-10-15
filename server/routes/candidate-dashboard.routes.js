@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { z } from "zod";
 import {
   patchCandidateVacancyAction,
   readCandidateMatch,
@@ -8,12 +7,7 @@ import {
 import { authenticate } from "../middleware/authenticate.js";
 import { validateRequest } from "../middleware/validate-request.js";
 import { vacancyIdParamsSchema } from "../utils/vacancy-schema.js";
-
-const actionSchema = z
-  .object({
-    status: z.enum(["interested", "started", "applied", "not_interested"]),
-  })
-  .strict();
+import { candidateActionUpdateSchema } from "../utils/candidate-action-schema.js";
 
 export const candidateDashboardRouter = Router();
 candidateDashboardRouter.use(authenticate);
@@ -26,6 +20,6 @@ candidateDashboardRouter.get(
 candidateDashboardRouter.put(
   "/:id/action",
   validateRequest(vacancyIdParamsSchema, "params"),
-  validateRequest(actionSchema),
+  validateRequest(candidateActionUpdateSchema),
   patchCandidateVacancyAction,
 );

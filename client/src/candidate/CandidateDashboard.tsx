@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, apiRequest } from "../lib/api";
 import { CandidateLayout } from "./CandidateLayout";
-import type { ActionStatus, CandidateMatch } from "./types";
+import { actionStatuses, legacyActionStatuses, type CandidateMatch } from "./types";
 
 function todayInIndia() {
   const values = Object.fromEntries(
@@ -33,8 +33,6 @@ function dateLabel(value: string, language: string) {
   }).format(new Date(`${value.slice(0, 10)}T00:00:00Z`));
 }
 
-const trackerStatuses: ActionStatus[] = ["interested", "started", "applied", "not_interested"];
-
 function SkeletonCards() {
   return (
     <div className="space-y-3" aria-label="Loading matches" aria-busy="true">
@@ -58,13 +56,18 @@ export function CandidateDashboard() {
   const [stateFilter, setStateFilter] = useState("all");
   const [sectorFilter, setSectorFilter] = useState("all");
   const [trackerFilter, setTrackerFilter] = useState("all");
+  const [trackerLifecycleEnabled, setTrackerLifecycleEnabled] = useState(false);
 
   const loadMatches = useCallback(async () => {
     try {
       setError("");
       setLoading(true);
-      const result = await apiRequest<{ matches: CandidateMatch[] }>("/matches");
+      const result = await apiRequest<{
+        matches: CandidateMatch[];
+        trackerLifecycleEnabled: boolean;
+      }>("/matches");
       setMatches(result.matches);
+      setTrackerLifecycleEnabled(result.trackerLifecycleEnabled);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : t("candidateLoadError"));
     } finally {
@@ -189,7 +192,7 @@ export function CandidateDashboard() {
           >
             <option value="all">{t("candidateFilterAll")}</option>
             <option value="not_started">{t("candidateTrackerNotStarted")}</option>
-            {trackerStatuses.map((status) => (
+            {(trackerLifecycleEnabled ? actionStatuses : legacyActionStatuses).map((status) => (
               <option key={status} value={status}>
                 {t(`candidateAction_${status}`)}
               </option>

@@ -8,8 +8,8 @@ import {
   parseSourceList,
   assertRobotsAllows,
 } from "./source-fetcher.js";
-import { extractPdfText } from "./pdf-text.js";
-import { getEnabledSources, sources } from "./sources.config.js";
+import { extractPdfDocument } from "./pdf-text.js";
+import { getDisabledSources, getEnabledSources } from "./sources.config.js";
 import { classifyContentChange } from "./notice-change.js";
 import { validateExtractedPost } from "./extraction-schema.js";
 import { processDryRunFixtures } from "./dry-run.service.js";
@@ -17,25 +17,23 @@ import { reevaluateMatchesForVacancy } from "../matching/match-persistence.servi
 
 const confidenceThreshold = 0.75;
 const adminVacancyFields = vacancyFieldsSchema;
+let activeRun = null;
 
 function logRun(event, details) {
   console.info(JSON.stringify({ event, at: new Date().toISOString(), ...details }));
 }
 
+async function extractOfficialPdf(buffer, pdfUrl) {
+  return extractPdfDocument(buffer, pdfUrl, contentHash(buffer));
+}
+
 async function extractItemDocument(source, item) {
-  const response = await fetchSourceResource(source, item.pdf_url ?? item.url);
+  const pdfUrl = item.pdf_url ?? item.url;
+  const response = await fetchSourceResource(source, pdfUrl);
   const isPdf =
     response.contentType.toLowerCase().includes("pdf") ||
     response.buffer.subarray(0, 5).toString("ascii") === "%PDF-";
-  if (isPdf) {
-    const parsed = await extractPdfText(response.buffer);
-    return {
-      text: parsed.text,
-      pdfUrl: item.pdf_url ?? item.url,
-      reason: parsed.reason,
-      hash: contentHash(response.buffer),
-    };
-  }
+  if (isPdf) return extractOfficialPdf(response.buffer, pdfUrl);
 
   const $ = (await import("cheerio")).load(response.text);
   const text = $("body").text().replace(/\s+/g, " ").trim();
@@ -43,13 +41,7 @@ async function extractItemDocument(source, item) {
   if (discoveredPdf) {
     const pdfUrl = new URL(discoveredPdf, item.url).href;
     const pdfResponse = await fetchSourceResource(source, pdfUrl);
-    const parsed = await extractPdfText(pdfResponse.buffer);
-    return {
-      text: parsed.text,
-      pdfUrl,
-      reason: parsed.reason,
-      hash: contentHash(pdfResponse.buffer),
-    };
+    return extractOfficialPdf(pdfResponse.buffer, pdfUrl);
   }
   return {
     text,
@@ -132,6 +124,9 @@ function toVacancyPayload(post, source, item, document, assessment) {
         quotes: Object.fromEntries(
           Object.entries(post).map(([key, entry]) => [key, entry.source_quote]),
         ),
+        locations: Object.fromEntries(
+          Object.entries(post).map(([key, entry]) => [key, entry.page_or_section]),
+        ),
         confidence: Object.fromEntries(
           Object.entries(post).map(([key, entry]) => [key, entry.confidence]),
         ),
@@ -171,13 +166,25 @@ async function getExistingNotice(sourceId, noticeUrl) {
   return data;
 }
 
-async function saveNotice(source, item, hash, vacancyPayloads) {
+async function saveNotice(source, item, hash, vacancyPayloads, retryConflict = true) {
   const { data, error } = await supabaseAdmin.rpc("ingest_source_notice", {
     p_source_id: source.id,
     p_notice_url: item.url,
     p_content_hash: hash,
     p_vacancies: vacancyPayloads,
   });
+  if (error?.code === "23505" && retryConflict) {
+    const existing = await getExistingNotice(source.id, item.url);
+    if (existing?.content_hash === hash) {
+      const { data: links, error: linksError } = await supabaseAdmin
+        .from("source_notice_vacancies")
+        .select("vacancy_id")
+        .eq("source_notice_id", existing.id);
+      if (linksError) throw linksError;
+      return { outcome: "unchanged", vacancy_ids: links.map(({ vacancy_id }) => vacancy_id) };
+    }
+    if (existing) return saveNotice(source, item, hash, vacancyPayloads, false);
+  }
   if (error) throw error;
   return data;
 }
@@ -343,7 +350,7 @@ async function sourceDue(source) {
   );
 }
 
-export async function runIngestionOnce({ force = false } = {}) {
+async function performIngestionOnce({ force = false } = {}) {
   if (env.INGESTION_DRY_RUN) return runDryRun();
 
   const startedAt = new Date().toISOString();
@@ -354,12 +361,12 @@ export async function runIngestionOnce({ force = false } = {}) {
     failures: [],
     run_summary: {},
   };
-  const skipped = sources
-    .filter((source) => !source.enabled || !source.terms_reviewed)
-    .map(({ id, disabled_reason }) => ({
-      source_id: id,
-      reason: disabled_reason ?? "Source is not enabled",
-    }));
+  const skipped = getDisabledSources().map(({ id, url, disabled_reason, access_review_note }) => ({
+    source_id: id,
+    source_url: url,
+    reason: disabled_reason ?? "Source is not enabled",
+    access_review_note,
+  }));
 
   for (const source of getEnabledSources()) {
     try {
@@ -371,12 +378,16 @@ export async function runIngestionOnce({ force = false } = {}) {
         const result = await processNotice(source, item);
         run.new_notices_found += result.notices;
       }
-      run.sources_checked.push({ source_id: source.id, notice_items: items.length });
+      run.sources_checked.push({
+        source_id: source.id,
+        source_url: source.url,
+        notice_items: items.length,
+      });
       await markSourceSuccess(source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown source failure";
       run.failures.push({ source_id: source.id, message });
-      run.sources_checked.push({ source_id: source.id, failed: true });
+      run.sources_checked.push({ source_id: source.id, source_url: source.url, failed: true });
       try {
         await markSourceFailure(source, message);
       } catch (healthError) {
@@ -398,6 +409,14 @@ export async function runIngestionOnce({ force = false } = {}) {
   }
   logRun("ingestion_run_complete", run);
   return run;
+}
+
+export function runIngestionOnce(options = {}) {
+  if (activeRun) return activeRun;
+  activeRun = performIngestionOnce(options).finally(() => {
+    activeRun = null;
+  });
+  return activeRun;
 }
 
 export async function getIngestionRuns(limit = 20) {

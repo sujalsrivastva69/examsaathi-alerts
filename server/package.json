@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",
-    "test": "node --test tests/ingestion/ingestion.test.js tests/notifications/notifications.test.js && vitest run tests/matching"
+    "test": "node --test tests/ingestion/ingestion.test.js tests/notifications/notifications.test.js && vitest run tests/matching tests/tools"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",

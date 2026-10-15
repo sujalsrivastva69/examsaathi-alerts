@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../../config/supabase.js";
 import { notificationIdempotencyKey } from "./idempotency.js";
+import { shouldSuppressDeadlineReminder } from "./reminder-policy.js";
 
 const reminders = new Set(["deadline_reminder_3d", "deadline_reminder_1d"]);
 const pageSize = 500;
@@ -82,7 +83,7 @@ export async function enqueueVacancyNotifications(
         .eq("vacancy_id", vacancyId)
         .maybeSingle();
       if (actionError) throw actionError;
-      if (action && ["applied", "not_interested"].includes(action.status)) continue;
+      if (action && shouldSuppressDeadlineReminder(action.status)) continue;
     }
 
     records.push({

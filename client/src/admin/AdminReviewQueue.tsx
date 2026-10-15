@@ -3,7 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ApiError, apiRequest } from "../lib/api";
 
-type ExtractedField = { value: unknown; source_quote: string | null; confidence: number };
+type ExtractedField = {
+  value: unknown;
+  source_quote: string | null;
+  page_or_section?: string | null;
+  confidence: number;
+};
 type ReviewVacancy = {
   id: string;
   title: string | null;
@@ -22,6 +27,7 @@ type ReviewVacancy = {
   source_notice_url: string | null;
   source_quotes: {
     quotes?: Record<string, string | null>;
+    locations?: Record<string, string | null>;
     confidence?: Record<string, number>;
     overall?: number;
   };
@@ -38,7 +44,12 @@ type IngestionRun = {
   new_notices_found: number;
   failures: Array<{ source_id: string; message: string }>;
   run_summary?: {
-    skipped_sources?: Array<{ source_id: string; reason: string }>;
+    skipped_sources?: Array<{
+      source_id: string;
+      source_url?: string;
+      reason: string;
+      access_review_note?: string;
+    }>;
     sample_notices_processed?: number;
   };
 };
@@ -233,7 +244,22 @@ export function AdminReviewQueue() {
             key={source.source_id}
             className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
           >
-            {source.source_id}: {source.reason}
+            <p>
+              {source.source_id}: {source.reason}
+            </p>
+            {source.source_url && (
+              <a
+                className="mt-1 inline-block text-xs underline underline-offset-2"
+                href={source.source_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {source.source_url}
+              </a>
+            )}
+            {source.access_review_note && (
+              <p className="mt-1 text-xs leading-5">{source.access_review_note}</p>
+            )}
           </div>
         ))}
 
@@ -259,8 +285,7 @@ export function AdminReviewQueue() {
                 Boolean(vacancy.age_cutoff_date) &&
                 Boolean(vacancy.rule_json);
               const checklistComplete = Object.values(checklist).every(Boolean);
-              const sourceDocument =
-                vacancy.pdf_url ?? vacancy.source_notice_url ?? vacancy.official_source_url;
+              const sourceNotice = vacancy.source_notice_url ?? vacancy.official_source_url;
 
               return (
                 <article
@@ -281,14 +306,26 @@ export function AdminReviewQueue() {
                         {Math.round(vacancy.extraction_confidence * 100)}%
                       </p>
                     </div>
-                    <a
-                      href={sourceDocument}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-forest hover:bg-canvas"
-                    >
-                      {t("adminOpenSourceDocument")}
-                    </a>
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={sourceNotice}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-forest hover:bg-canvas"
+                      >
+                        {t("adminOpenSourceDocument")}
+                      </a>
+                      {vacancy.pdf_url && (
+                        <a
+                          href={vacancy.pdf_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-forest hover:bg-canvas"
+                        >
+                          {t("adminOpenPdfDocument")}
+                        </a>
+                      )}
+                    </div>
                   </header>
 
                   {vacancy.review_reasons.length > 0 && (
@@ -309,7 +346,7 @@ export function AdminReviewQueue() {
                           {Object.entries(fields).map(([name, field]) => {
                             const confidence =
                               vacancy.source_quotes.confidence?.[name] ?? field.confidence ?? 0;
-                            const low = confidence < confidenceThreshold;
+                            const low = confidence < confidenceThreshold || field.value == null;
                             return (
                               <div
                                 key={name}
@@ -324,6 +361,11 @@ export function AdminReviewQueue() {
                                 <dd className="mt-1 break-words text-sm">
                                   {displayValue(field.value, t)}
                                 </dd>
+                                {field.page_or_section && (
+                                  <dd className="mt-1 text-xs text-muted">
+                                    {t("adminPageOrSection")}: {field.page_or_section}
+                                  </dd>
+                                )}
                               </div>
                             );
                           })}
@@ -340,6 +382,8 @@ export function AdminReviewQueue() {
                           {Object.entries(fields).map(([name, field]) => {
                             const quote =
                               vacancy.source_quotes.quotes?.[name] ?? field.source_quote;
+                            const location =
+                              vacancy.source_quotes.locations?.[name] ?? field.page_or_section;
                             const confidence =
                               vacancy.source_quotes.confidence?.[name] ?? field.confidence ?? 0;
                             const low = confidence < confidenceThreshold || !quote;
@@ -356,6 +400,11 @@ export function AdminReviewQueue() {
                                 <dd className="mt-1 text-sm leading-6">
                                   {quote || t("adminNoSourceQuote")}
                                 </dd>
+                                {location && (
+                                  <dd className="mt-1 text-xs text-muted">
+                                    {t("adminPageOrSection")}: {location}
+                                  </dd>
+                                )}
                               </div>
                             );
                           })}

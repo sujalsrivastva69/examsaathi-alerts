@@ -1,3 +1,7 @@
+import { calculateAgeOnDate, isValidDate } from "../../../shared/age.js";
+
+export { calculateAgeOnDate, isValidDate };
+
 const educationRanks = {
   secondary: 0,
   higher_secondary: 1,
@@ -8,17 +12,6 @@ const educationRanks = {
 
 const relaxationCategories = ["sc", "st", "obc", "ews", "pwd", "ex_serviceman"];
 
-function isValidDate(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-}
-
 function dateInIndia() {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata",
@@ -28,15 +21,6 @@ function dateInIndia() {
   }).formatToParts(new Date());
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
   return `${values.year}-${values.month}-${values.day}`;
-}
-
-export function calculateAgeOnDate(dateOfBirth, cutoffDate) {
-  if (!isValidDate(dateOfBirth) || !isValidDate(cutoffDate)) return null;
-  const [birthYear, birthMonth, birthDay] = dateOfBirth.split("-").map(Number);
-  const [cutoffYear, cutoffMonth, cutoffDay] = cutoffDate.split("-").map(Number);
-  const birthdayNotReached =
-    cutoffMonth < birthMonth || (cutoffMonth === birthMonth && cutoffDay < birthDay);
-  return cutoffYear - birthYear - (birthdayNotReached ? 1 : 0);
 }
 
 function result(status, reasonEn, reasonHi) {

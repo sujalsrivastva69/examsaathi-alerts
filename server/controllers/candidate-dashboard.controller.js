@@ -28,7 +28,7 @@ export async function patchCandidateVacancyAction(req, res, next) {
         await updateCandidateVacancyAction(
           req.user.id,
           req.validated.params.id,
-          req.validated.body.status,
+          req.validated.body,
         ),
       );
   } catch (error) {

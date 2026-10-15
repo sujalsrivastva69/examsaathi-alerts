@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { validateExtractedPost } from "./extraction-schema.js";
 import { expectedExtraction } from "../../tests/ingestion/fixtures/expected-extractions.js";
-import { sources } from "./sources.config.js";
+import { getDisabledSources } from "./sources.config.js";
 
 const fixtureDirectory = new URL("../../tests/ingestion/fixtures/", import.meta.url);
 const confidenceThreshold = 0.75;
@@ -23,9 +23,14 @@ export async function processDryRunFixtures() {
     run_summary: {
       mode: "dry_run",
       sample_notices_processed: fixtures.length,
-      configured_sources_disabled: sources
-        .filter((source) => !source.enabled)
-        .map(({ id, disabled_reason }) => ({ id, disabled_reason })),
+      skipped_sources: getDisabledSources().map(
+        ({ id, url, disabled_reason, access_review_note }) => ({
+          source_id: id,
+          source_url: url,
+          reason: disabled_reason,
+          access_review_note,
+        }),
+      ),
       fixture_results: fixtures,
     },
   };

@@ -1,5 +1,17 @@
 export type MatchStatus = "preliminary_match" | "needs_review";
-export type ActionStatus = "interested" | "started" | "applied" | "not_interested";
+export const actionStatuses = [
+  "saved",
+  "interested",
+  "application_started",
+  "submitted",
+  "admit_card_available",
+  "exam_appeared",
+  "result_declared",
+  "next_stage",
+  "not_interested",
+] as const;
+export const legacyActionStatuses = ["interested", "started", "applied", "not_interested"] as const;
+export type ActionStatus = (typeof actionStatuses)[number] | (typeof legacyActionStatuses)[number];
 
 export type Vacancy = {
   id: string;
@@ -34,10 +46,11 @@ export type CandidateMatch = {
   rules_version: number;
   evaluated_at: string;
   vacancy: Vacancy;
-  action: { status: ActionStatus; updated_at: string } | null;
+  action: { status: ActionStatus; notes: string | null; updated_at: string } | null;
 };
 
 export type MatchDetail = {
+  trackerLifecycleEnabled: boolean;
   match: CandidateMatch;
   changes: Array<{
     id: number;
@@ -46,7 +59,7 @@ export type MatchDetail = {
     new_value: unknown;
     changed_at: string;
   }>;
-  action: { status: ActionStatus; updated_at: string } | null;
+  action: { status: ActionStatus; notes: string | null; updated_at: string } | null;
   actionHistory: Array<{
     id: number;
     previous_status: ActionStatus | null;

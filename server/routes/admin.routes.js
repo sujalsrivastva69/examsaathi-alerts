@@ -5,6 +5,7 @@ import {
   deleteVacancy,
   extendVacancyDeadline,
   getVacancy,
+  importVacancies,
   listIngestionRuns,
   listReviewQueue,
   listFailedNotifications,
@@ -29,6 +30,7 @@ import {
   previewSchema,
   vacancyCreateSchema,
   vacancyIdParamsSchema,
+  vacancyImportSchema,
   vacancyListQuerySchema,
   vacancyPatchSchema,
 } from "../utils/vacancy-schema.js";
@@ -46,6 +48,7 @@ adminRouter.post(
   retryNotification,
 );
 adminRouter.get("/", validateRequest(vacancyListQuerySchema, "query"), listVacancies);
+adminRouter.post("/import", validateRequest(vacancyImportSchema), importVacancies);
 adminRouter.post("/", validateRequest(vacancyCreateSchema), createVacancy);
 adminRouter.post("/preview-matches", validateRequest(previewSchema), previewMatches);
 adminRouter.get("/:id", validateRequest(vacancyIdParamsSchema, "params"), getVacancy);

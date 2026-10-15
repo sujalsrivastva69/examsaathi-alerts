@@ -28,7 +28,7 @@ export default defineConfig({
   webServer: remoteBaseUrl
     ? undefined
     : {
-        command: "npm run dev:client -- --host 127.0.0.1",
+        command: "npm run dev --workspace @examsaathi/client -- --host 127.0.0.1",
         url: "http://127.0.0.1:5173",
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

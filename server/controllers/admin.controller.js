@@ -9,6 +9,7 @@ import {
   getAdminReviewQueue,
   getFailedAdminNotifications,
   getPreviewMatches,
+  importAdminVacancies,
   publishAdminVacancy,
   reopenAdminVacancy,
   rejectIngestedAdminVacancy,
@@ -49,6 +50,13 @@ export const createVacancy = (req, res, next) =>
     res,
     next,
     201,
+  );
+export const importVacancies = (req, res, next) =>
+  respond(
+    (request) => importAdminVacancies(request.user.id, request.validated.body.vacancies),
+    req,
+    res,
+    next,
   );
 export const deleteVacancy = (req, res, next) =>
   respond(

@@ -18,11 +18,11 @@ const blankFields = {
 };
 
 function quoted(value, confidence = 0.98) {
-  return { value, source_quote: null, confidence };
+  return { value, source_quote: null, page_or_section: null, confidence };
 }
 
 function absent() {
-  return { value: null, source_quote: null, confidence: 0.98 };
+  return { value: null, source_quote: null, page_or_section: null, confidence: 0.98 };
 }
 
 function makePost(values) {

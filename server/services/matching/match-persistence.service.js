@@ -1,8 +1,11 @@
 import { supabaseAdmin } from "../../config/supabase.js";
+import { env } from "../../config/env.js";
 import { evaluateVacancy } from "./evaluate-vacancy.js";
 
 const pageSize = 500;
-const matchColumns = "user_id, education, date_of_birth, state, job_preferences";
+const matchColumns = env.PROFILE_MATCHING_FIELDS_ENABLED
+  ? "user_id, education, date_of_birth, state, job_preferences, category, discipline, experience_years"
+  : "user_id, education, date_of_birth, state, job_preferences";
 const vacancyColumns =
   "id, rules_version, rule_json, age_cutoff_date, deadline, status, verification_status, last_verified_at";
 

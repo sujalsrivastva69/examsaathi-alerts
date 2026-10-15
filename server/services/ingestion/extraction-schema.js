@@ -3,9 +3,19 @@ import { educationLevels, indianStates } from "../../utils/profile-schema.js";
 
 const nonEmptyText = z.string().trim().min(1).max(1000);
 const textValue = z.string().trim().min(1).max(1000).nullable();
+
+function isCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
 const dateValue = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine(isCalendarDate, "Date must be a valid YYYY-MM-DD calendar date")
   .nullable();
 const ageValue = z.number().int().min(14).max(70).nullable();
 const relaxationsValue = z
@@ -27,6 +37,7 @@ const field = (value) =>
     .object({
       value,
       source_quote: nonEmptyText.nullable(),
+      page_or_section: nonEmptyText.max(200).nullable(),
       confidence: z.number().min(0).max(1),
     })
     .strict()
@@ -36,6 +47,13 @@ const field = (value) =>
           code: z.ZodIssueCode.custom,
           path: ["source_quote"],
           message: "A missing value must not include a source quote",
+        });
+      }
+      if (entry.value === null && entry.page_or_section !== null) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["page_or_section"],
+          message: "A missing value must not include a source location",
         });
       }
       if (entry.value !== null && entry.source_quote === null) {
@@ -63,7 +81,13 @@ const extractionFields = {
   domicile_states: field(statesValue),
   experience: field(z.number().int().min(0).max(50).nullable()),
   location_state: field(textValue),
-  application_url: field(z.string().url().nullable()),
+  application_url: field(
+    z
+      .string()
+      .url()
+      .refine((value) => new URL(value).protocol === "https:", "Application URL must use HTTPS")
+      .nullable(),
+  ),
 };
 
 export const extractedPostSchema = z.object(extractionFields).strict();
@@ -91,13 +115,16 @@ export function parseLlmJson(content) {
 }
 
 export function validateQuotes(post, noticeText) {
-  const absentQuotes = [];
+  const absentEvidence = [];
   for (const [key, entry] of Object.entries(post)) {
     if (entry.value !== null && !noticeText.includes(entry.source_quote)) {
-      absentQuotes.push(key);
+      absentEvidence.push(key);
+    }
+    if (entry.page_or_section && !noticeText.includes(entry.page_or_section)) {
+      absentEvidence.push(`${key} location`);
     }
   }
-  return absentQuotes;
+  return absentEvidence;
 }
 
 export function scoreExtraction(post) {
@@ -110,22 +137,15 @@ export function scoreExtraction(post) {
 
 function validDate(value) {
   if (!value) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day &&
-    year >= 1900 &&
-    year <= new Date().getUTCFullYear() + 10
-  );
+  const year = Number(value.slice(0, 4));
+  return isCalendarDate(value) && year >= 1900 && year <= new Date().getUTCFullYear() + 10;
 }
 
 export function validateExtractedPost(post, noticeText, threshold = 0.75) {
   const reasons = [];
   const missingQuotes = validateQuotes(post, noticeText);
   if (missingQuotes.length) {
-    reasons.push(`Quoted text was not found verbatim for: ${missingQuotes.join(", ")}`);
+    reasons.push(`Source evidence was not found verbatim for: ${missingQuotes.join(", ")}`);
   }
   const confidence = scoreExtraction(post);
   if (confidence < threshold) {
@@ -154,6 +174,9 @@ export function validateExtractedPost(post, noticeText, threshold = 0.75) {
   }
   if (start && deadline && deadline < start) {
     reasons.push("Application deadline is before the application start date");
+  }
+  if (post.publication_date.value && start && post.publication_date.value > start) {
+    reasons.push("Application start date is before the notice publication date");
   }
   if (hasAgeRules && !cutoff) {
     reasons.push("Age rules are present but the age cutoff date is missing");

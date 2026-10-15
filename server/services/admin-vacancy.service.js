@@ -150,6 +150,31 @@ export async function createAdminVacancy(actorId, fields) {
   return refreshMatches(data);
 }
 
+export async function importAdminVacancies(actorId, vacancies) {
+  const created = [];
+  const failed = [];
+
+  for (const [index, fields] of vacancies.entries()) {
+    try {
+      const { data, error } = await supabaseAdmin.rpc("admin_create_vacancy", {
+        p_actor_id: actorId,
+        p_vacancy: { ...fields, verification_checklist: blankChecklist },
+      });
+      if (error) throwDatabaseError("import create", error);
+      created.push({ index, id: data.id, title: data.title });
+    } catch (error) {
+      console.error("Could not import admin vacancy draft", { index, error });
+      failed.push({
+        index,
+        title: fields.title,
+        message: "Could not create this draft. Check server logs and try again.",
+      });
+    }
+  }
+
+  return { created, failed };
+}
+
 export async function deleteAdminVacancy(actorId, id) {
   const vacancy = await readVacancy(id);
   if (vacancy.status !== "draft") {

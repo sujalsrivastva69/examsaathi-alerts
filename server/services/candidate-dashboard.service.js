@@ -1,7 +1,9 @@
 import { supabaseAdmin } from "../config/supabase.js";
+import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
 
 const matchStatuses = ["preliminary_match", "needs_review"];
+const legacyActionStatuses = ["interested", "started", "applied", "not_interested"];
 const vacancyColumns =
   "id, title, recruiting_organization, official_source_url, pdf_url, application_start_date, deadline, age_cutoff_date, rule_json, status, verification_status, last_verified_at, extraction_payload";
 
@@ -50,7 +52,9 @@ export async function listCandidateMatches(userId) {
     .order("evaluated_at", { ascending: false })
     .limit(500);
   if (matchError) throwStorageError("Could not load candidate matches", matchError);
-  if (!matches.length) return { matches: [] };
+  if (!matches.length) {
+    return { trackerLifecycleEnabled: env.TRACKER_LIFECYCLE_ENABLED, matches: [] };
+  }
 
   const { data: vacancies, error: vacancyError } = await supabaseAdmin
     .from("vacancies")
@@ -71,7 +75,11 @@ export async function listCandidateMatches(userId) {
 
   const { data: actions, error: actionError } = await supabaseAdmin
     .from("user_vacancy_actions")
-    .select("vacancy_id, status, updated_at")
+    .select(
+      env.TRACKER_LIFECYCLE_ENABLED
+        ? "vacancy_id, status, notes, updated_at"
+        : "vacancy_id, status, updated_at",
+    )
     .eq("user_id", userId)
     .in(
       "vacancy_id",
@@ -81,11 +89,16 @@ export async function listCandidateMatches(userId) {
   const actionByVacancy = new Map(actions.map((action) => [action.vacancy_id, action]));
 
   return {
+    trackerLifecycleEnabled: env.TRACKER_LIFECYCLE_ENABLED,
     matches: visibleMatches.map((match) => ({
       ...match,
-      action: actionByVacancy.get(match.vacancy_id) ?? null,
+      action: normalizeAction(actionByVacancy.get(match.vacancy_id)),
     })),
   };
+}
+
+function normalizeAction(action) {
+  return action ? { ...action, notes: action.notes ?? null } : null;
 }
 
 export async function getCandidateMatch(userId, vacancyId) {
@@ -118,7 +131,7 @@ export async function getCandidateMatch(userId, vacancyId) {
       .limit(100),
     supabaseAdmin
       .from("user_vacancy_actions")
-      .select("status, updated_at")
+      .select(env.TRACKER_LIFECYCLE_ENABLED ? "status, notes, updated_at" : "status, updated_at")
       .eq("user_id", userId)
       .eq("vacancy_id", vacancyId)
       .maybeSingle(),
@@ -138,14 +151,15 @@ export async function getCandidateMatch(userId, vacancyId) {
     throwStorageError("Could not load application tracker history", historyResult.error);
 
   return {
+    trackerLifecycleEnabled: env.TRACKER_LIFECYCLE_ENABLED,
     match: { ...match, vacancy: withApplicationUrl(vacancy) },
     changes: changeResult.data,
-    action: actionResult.data,
+    action: normalizeAction(actionResult.data),
     actionHistory: historyResult.data,
   };
 }
 
-export async function updateCandidateVacancyAction(userId, vacancyId, status) {
+export async function updateCandidateVacancyAction(userId, vacancyId, action) {
   const { data: match, error: matchError } = await supabaseAdmin
     .from("user_vacancy_matches")
     .select("vacancy_id")
@@ -156,11 +170,49 @@ export async function updateCandidateVacancyAction(userId, vacancyId, status) {
   if (matchError) throwStorageError("Could not verify candidate vacancy match", matchError);
   if (!match) throw new AppError(404, "MATCH_NOT_FOUND", "This match is not available");
 
-  const { data, error } = await supabaseAdmin.rpc("set_user_vacancy_action", {
-    p_user_id: userId,
-    p_vacancy_id: vacancyId,
-    p_status: status,
-  });
+  if (!env.TRACKER_LIFECYCLE_ENABLED) {
+    const legacyStatus =
+      action.status === "application_started"
+        ? "started"
+        : action.status === "submitted"
+          ? "applied"
+          : action.status;
+    if (!legacyActionStatuses.includes(legacyStatus)) {
+      throw new AppError(
+        409,
+        "TRACKER_MIGRATION_REQUIRED",
+        "The expanded application tracker is not enabled for this database",
+      );
+    }
+    if (action.notes?.trim()) {
+      throw new AppError(
+        409,
+        "TRACKER_MIGRATION_REQUIRED",
+        "Private tracker notes require the tracker database migration",
+      );
+    }
+  }
+
+  const { data, error } = await supabaseAdmin.rpc(
+    "set_user_vacancy_action",
+    env.TRACKER_LIFECYCLE_ENABLED
+      ? {
+          p_user_id: userId,
+          p_vacancy_id: vacancyId,
+          p_status: action.status,
+          p_notes: action.notes ?? null,
+        }
+      : {
+          p_user_id: userId,
+          p_vacancy_id: vacancyId,
+          p_status:
+            action.status === "application_started"
+              ? "started"
+              : action.status === "submitted"
+                ? "applied"
+                : action.status,
+        },
+  );
   if (error) throwStorageError("Could not update application tracker status", error);
   return { action: data };
 }

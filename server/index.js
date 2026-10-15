@@ -5,6 +5,12 @@ import { startNotificationScheduler } from "./services/notifications/scheduler.j
 
 app.listen(env.PORT, () => {
   console.info(`ExamSaathi API listening on port ${env.PORT}`);
-  startIngestionScheduler();
-  startNotificationScheduler();
+  if (env.LOCAL_VIEW_MODE) {
+    console.info(
+      "Local view mode enabled; background ingestion and notification jobs are disabled",
+    );
+  } else {
+    startIngestionScheduler();
+    startNotificationScheduler();
+  }
 });

@@ -43,7 +43,7 @@ const messages = {
     notMatched: "Not matched",
     expired: "Expired",
     underVerification: "Under verification",
-    comingSoon: "Profile setup is coming in the next step",
+    profilePrivacyNote: "Your profile stays private and can be updated any time.",
     authPrivacy:
       "Your account details are used to secure your account and deliver the services you request.",
     authUnexpectedError: "Something went wrong. Please try again.",
@@ -107,6 +107,26 @@ const messages = {
     chooseState: "Choose a state or union territory",
     jobPreferences: "What kinds of roles interest you?",
     jobPreferencesPrivacy: "Used only to tailor vacancy alerts; select at least one area.",
+    matchingDetailsOptional: "Optional details for more useful preliminary matches",
+    candidateCategory: "Reservation category",
+    candidateCategoryPrivacy:
+      "Optional and private. Used only to compare with category relaxations stated in a notice; this does not guarantee eligibility.",
+    candidateCategory_general: "General",
+    candidateCategory_sc: "Scheduled Caste (SC)",
+    candidateCategory_st: "Scheduled Tribe (ST)",
+    candidateCategory_obc: "Other Backward Class (OBC)",
+    candidateCategory_ews: "Economically Weaker Section (EWS)",
+    candidateCategory_pwd: "Person with Disability (PwD)",
+    candidateCategory_ex_serviceman: "Ex-serviceman",
+    candidateDiscipline: "Education subject / stream",
+    candidateDisciplinePrivacy:
+      "Optional and private. Used only to compare with accepted disciplines listed in a notice.",
+    candidateExperience: "Relevant work experience (years)",
+    candidateExperiencePrivacy:
+      "Optional and private. Used to compare with vacancy experience requirements; do not include estimated experience.",
+    candidateExperienceYears_one: "{{count}} year",
+    candidateExperienceYears_other: "{{count}} years",
+    notProvided: "Not provided",
     administration: "Administration",
     banking: "Banking",
     defence: "Defence",
@@ -170,6 +190,20 @@ const messages = {
     adminNoVacancies: "No vacancies match these filters.",
     adminEditVacancy: "Edit vacancy",
     adminCreateVacancy: "Create vacancy",
+    adminImportJson: "Import Claude JSON",
+    adminImportTitle: "Import vacancy drafts",
+    adminImportHelp:
+      "Ask Claude to return a JSON array using the example shape below, based only on official notices. Include dates as YYYY-MM-DD, official HTTPS links, and all eligibility rules. The import validates every item and creates drafts only; review the original notice before publishing.",
+    adminImportFile: "Choose a .json file",
+    adminImportPaste: "Or paste JSON here",
+    adminImportCreate: "Validate and create drafts",
+    adminImportDraftOnly:
+      "Up to 20 vacancies per import. Nothing is published or emailed automatically.",
+    adminImportCreated: "drafts created",
+    adminImportFailed: "failed",
+    adminImportFormat: "Show required JSON format",
+    adminImportExampleWarning:
+      "Format example only. Replace every value with facts from the official notice.",
     adminDelete: "Delete draft",
     adminDeleteConfirm: "Delete this draft? Its audit history will be retained.",
     adminSave: "Save changes",
@@ -260,6 +294,8 @@ const messages = {
     adminIngestion_needs_manual_entry: "Manual entry required",
     adminOverallConfidence: "Extraction confidence",
     adminOpenSourceDocument: "Open original notice",
+    adminOpenPdfDocument: "Open notice PDF",
+    adminPageOrSection: "Page or section",
     adminExtractedFields: "Extracted fields",
     adminNoExtractedFields: "No fields were extracted from this notice.",
     adminSourceQuotes: "Exact source quotes",
@@ -346,7 +382,19 @@ const messages = {
     candidateNewValue: "Updated",
     candidateTrackerTitle: "Application tracker",
     candidateTrackerIntro: "Choose the status that best describes your progress.",
+    candidateTrackerStatus: "Recruitment progress",
+    candidateTrackerNotes: "Private notes (optional)",
+    candidateTrackerNotesHelp:
+      "Use notes for non-sensitive reminders only. Never store portal passwords, OTPs, roll numbers, or application numbers here.",
+    candidateSaveTracker: "Save tracker",
+    candidateAction_saved: "Saved",
     candidateAction_interested: "Interested",
+    candidateAction_application_started: "Application started",
+    candidateAction_submitted: "Submitted",
+    candidateAction_admit_card_available: "Admit card available",
+    candidateAction_exam_appeared: "Exam appeared",
+    candidateAction_result_declared: "Result declared",
+    candidateAction_next_stage: "Next stage",
     candidateAction_started: "Started",
     candidateAction_applied: "Applied",
     candidateAction_not_interested: "Not interested",
@@ -406,7 +454,7 @@ const messages = {
     notMatched: "मिलान नहीं",
     expired: "समाप्त",
     underVerification: "सत्यापन जारी",
-    comingSoon: "प्रोफ़ाइल सेटअप अगले चरण में आएगा",
+    profilePrivacyNote: "आपकी प्रोफ़ाइल निजी रहती है और इसे कभी भी बदला जा सकता है।",
     authPrivacy:
       "आपके खाते की जानकारी का उपयोग खाते की सुरक्षा और आपके अनुरोधित सेवा के लिए किया जाता है।",
     authUnexpectedError: "कुछ गड़बड़ हुई। कृपया फिर कोशिश करें।",
@@ -470,6 +518,26 @@ const messages = {
     chooseState: "राज्य या केंद्र शासित प्रदेश चुनें",
     jobPreferences: "आपको किस तरह के पदों में रुचि है?",
     jobPreferencesPrivacy: "केवल भर्ती अलर्ट के लिए; कम-से-कम एक क्षेत्र चुनें।",
+    matchingDetailsOptional: "बेहतर प्रारंभिक मिलान के लिए वैकल्पिक जानकारी",
+    candidateCategory: "आरक्षण श्रेणी",
+    candidateCategoryPrivacy:
+      "वैकल्पिक और निजी। केवल सूचना में स्पष्ट रूप से दी गई श्रेणी-छूट से तुलना के लिए; पात्रता की गारंटी नहीं।",
+    candidateCategory_general: "सामान्य",
+    candidateCategory_sc: "अनुसूचित जाति (SC)",
+    candidateCategory_st: "अनुसूचित जनजाति (ST)",
+    candidateCategory_obc: "अन्य पिछड़ा वर्ग (OBC)",
+    candidateCategory_ews: "आर्थिक रूप से कमजोर वर्ग (EWS)",
+    candidateCategory_pwd: "दिव्यांग व्यक्ति (PwD)",
+    candidateCategory_ex_serviceman: "भूतपूर्व सैनिक",
+    candidateDiscipline: "शिक्षा विषय / स्ट्रीम",
+    candidateDisciplinePrivacy:
+      "वैकल्पिक और निजी। केवल सूचना में दिए गए स्वीकृत विषयों से तुलना के लिए।",
+    candidateExperience: "संबंधित कार्य अनुभव (वर्ष)",
+    candidateExperiencePrivacy:
+      "वैकल्पिक और निजी। रिक्ति की अनुभव शर्तों से तुलना के लिए; अनुमानित अनुभव न जोड़ें।",
+    candidateExperienceYears_one: "{{count}} वर्ष",
+    candidateExperienceYears_other: "{{count}} वर्ष",
+    notProvided: "नहीं दिया",
     administration: "प्रशासन",
     banking: "बैंकिंग",
     defence: "रक्षा",
@@ -532,6 +600,20 @@ const messages = {
     adminNoVacancies: "इन फ़िल्टर से कोई भर्ती नहीं मिली।",
     adminEditVacancy: "भर्ती बदलें",
     adminCreateVacancy: "भर्ती बनाएँ",
+    adminImportJson: "Claude JSON आयात करें",
+    adminImportTitle: "भर्ती के मसौदे आयात करें",
+    adminImportHelp:
+      "Claude से नीचे दिए गए नमूने के आकार में JSON array बनवाएँ; केवल आधिकारिक सूचनाओं का उपयोग करें। तारीख़ YYYY-MM-DD में, आधिकारिक HTTPS लिंक और पात्रता नियम शामिल करें। हर item validate होगा और केवल मसौदा बनेगा; प्रकाशित करने से पहले मूल सूचना जाँचें।",
+    adminImportFile: ".json फ़ाइल चुनें",
+    adminImportPaste: "या JSON यहाँ paste करें",
+    adminImportCreate: "जाँचें और मसौदे बनाएँ",
+    adminImportDraftOnly:
+      "एक बार में अधिकतम 20 भर्तियाँ। कुछ भी अपने-आप प्रकाशित या ईमेल नहीं होगा।",
+    adminImportCreated: "मसौदे बनाए गए",
+    adminImportFailed: "विफल",
+    adminImportFormat: "ज़रूरी JSON प्रारूप देखें",
+    adminImportExampleWarning:
+      "यह केवल प्रारूप का नमूना है। हर मान को आधिकारिक सूचना के तथ्य से बदलें।",
     adminDelete: "मसौदा हटाएँ",
     adminDeleteConfirm: "यह मसौदा हटाएँ? इसका ऑडिट इतिहास सुरक्षित रहेगा।",
     adminSave: "बदलाव सहेजें",
@@ -620,6 +702,8 @@ const messages = {
     adminIngestion_needs_manual_entry: "जानकारी हाथ से भरें",
     adminOverallConfidence: "निकासी विश्वास स्तर",
     adminOpenSourceDocument: "मूल सूचना खोलें",
+    adminOpenPdfDocument: "सूचना PDF खोलें",
+    adminPageOrSection: "पृष्ठ या अनुभाग",
     adminExtractedFields: "निकाली गई जानकारी",
     adminNoExtractedFields: "इस सूचना से कोई जानकारी नहीं निकली।",
     adminSourceQuotes: "मूल सूचना के उद्धरण",
@@ -704,7 +788,19 @@ const messages = {
     candidateNewValue: "बाद में",
     candidateTrackerTitle: "आवेदन ट्रैकर",
     candidateTrackerIntro: "अपनी प्रगति के अनुसार स्थिति चुनें।",
+    candidateTrackerStatus: "भर्ती की प्रगति",
+    candidateTrackerNotes: "निजी नोट (वैकल्पिक)",
+    candidateTrackerNotesHelp:
+      "नोट में केवल गैर-संवेदनशील बातें लिखें। पोर्टल पासवर्ड, OTP, रोल नंबर या आवेदन नंबर यहाँ न लिखें।",
+    candidateSaveTracker: "ट्रैकर सहेजें",
+    candidateAction_saved: "सहेजा गया",
     candidateAction_interested: "रुचि है",
+    candidateAction_application_started: "आवेदन शुरू किया",
+    candidateAction_submitted: "आवेदन जमा किया",
+    candidateAction_admit_card_available: "प्रवेश पत्र उपलब्ध",
+    candidateAction_exam_appeared: "परीक्षा दी",
+    candidateAction_result_declared: "परिणाम घोषित",
+    candidateAction_next_stage: "अगला चरण",
     candidateAction_started: "शुरू किया",
     candidateAction_applied: "आवेदन किया",
     candidateAction_not_interested: "रुचि नहीं",
@@ -729,12 +825,20 @@ const messages = {
   },
 } satisfies Record<Language, Record<string, string>>;
 
+const languageStorageKey = "examsaathi-language";
+const storedLanguage = window.localStorage.getItem(languageStorageKey);
+const initialLanguage: Language = storedLanguage === "hi" ? "hi" : "en";
+
+i18n.on("languageChanged", (language: Language) => {
+  window.localStorage.setItem(languageStorageKey, language);
+});
+
 void i18n.use(initReactI18next).init({
   resources: {
     en: { translation: messages.en },
     hi: { translation: messages.hi },
   },
-  lng: "en",
+  lng: initialLanguage,
   fallbackLng: "en",
   supportedLngs: ["en", "hi"],
   interpolation: {

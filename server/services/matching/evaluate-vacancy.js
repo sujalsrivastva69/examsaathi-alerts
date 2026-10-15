@@ -38,17 +38,19 @@ function normalize(value) {
 function checkQualification(candidate, rules) {
   const required = rules?.qualification_level;
   const level = candidate?.qualification_level ?? candidate?.education;
-  if (!required) {
+  const normalizedRequired = normalize(required);
+  const normalizedLevel = normalize(level);
+  if (!normalizedRequired) {
     return unknown(
       "Qualification requirement is missing from the rules.",
       "नियमों में आवश्यक योग्यता नहीं दी गई है।",
     );
   }
-  if (!level) {
+  if (!normalizedLevel) {
     return unknown("Candidate qualification is missing.", "उम्मीदवार की योग्यता उपलब्ध नहीं है।");
   }
-  if (level === "other" || required === "other") {
-    if (level === required) {
+  if (normalizedLevel === "other" || normalizedRequired === "other") {
+    if (normalizedLevel === normalizedRequired) {
       return unknown(
         "The qualification is marked as other and needs manual review.",
         "योग्यता 'अन्य' के रूप में दी गई है; मैन्युअल समीक्षा आवश्यक है।",
@@ -60,14 +62,18 @@ function checkQualification(candidate, rules) {
       "उम्मीदवार की योग्यता से आवश्यक योग्यता सिद्ध नहीं होती है।",
     );
   }
-  if (level === required) {
+  if (normalizedLevel === normalizedRequired) {
     return result(
       "matched",
       "The candidate has the required qualification.",
       "उम्मीदवार के पास आवश्यक योग्यता है।",
     );
   }
-  if (rules.equivalent_qualifications?.includes(level)) {
+  if (
+    rules.equivalent_qualifications?.some(
+      (qualification) => normalize(qualification) === normalizedLevel,
+    )
+  ) {
     return result(
       "matched",
       "The rules explicitly accept this qualification as equivalent.",
@@ -75,8 +81,8 @@ function checkQualification(candidate, rules) {
     );
   }
 
-  const candidateRank = educationRanks[level];
-  const requiredRank = educationRanks[required];
+  const candidateRank = educationRanks[normalizedLevel];
+  const requiredRank = educationRanks[normalizedRequired];
   if (candidateRank !== undefined && requiredRank !== undefined) {
     if (candidateRank >= requiredRank) {
       return result(
@@ -92,7 +98,17 @@ function checkQualification(candidate, rules) {
     );
   }
 
-  if (level === "diploma" || level === "iti" || required === "diploma" || required === "iti") {
+  const tradeQualifications = new Set(["diploma", "iti"]);
+  if (
+    (tradeQualifications.has(normalizedLevel) && requiredRank >= educationRanks.undergraduate) ||
+    (tradeQualifications.has(normalizedRequired) && candidateRank >= educationRanks.undergraduate)
+  ) {
+    return unknown(
+      "Graduate-level and diploma/ITI requirements are not directly comparable; manual review is needed to avoid missing a potentially eligible candidate.",
+      "स्नातक स्तर और डिप्लोमा/ITI की योग्यताओं की सीधे तुलना नहीं की जा सकती; संभावित पात्र उम्मीदवार छूट न जाए, इसलिए मैन्युअल समीक्षा आवश्यक है।",
+    );
+  }
+  if (tradeQualifications.has(normalizedLevel) || tradeQualifications.has(normalizedRequired)) {
     return result(
       "not_matched",
       "Diploma and ITI qualifications are treated separately; no equivalence is stated in the rules.",

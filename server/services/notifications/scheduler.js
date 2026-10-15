@@ -5,10 +5,10 @@ import {
   flagStaleVacancies,
   getPublishedVacancies,
   getReminderVacancies,
+  markPublicationEventEnqueued,
 } from "./notification-queue.service.js";
 import { processNotificationBatch } from "./worker.js";
-
-let running = false;
+import { needsPublicationEnqueue } from "./notification-policy.js";
 
 function dateInIndia(date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -38,14 +38,20 @@ async function enqueueReminders(days, type) {
   return enqueued;
 }
 
-export async function runNotificationCycle() {
+async function performNotificationCycle() {
   const vacancies = await getPublishedVacancies();
   let publicationEventsEnqueued = 0;
   for (const vacancy of vacancies) {
+    if (!needsPublicationEnqueue(vacancy)) continue;
     const result = await enqueueVacancyNotifications(vacancy.id, vacancy.next_notification_type, {
       rulesVersion: vacancy.rules_version,
     });
     publicationEventsEnqueued += result.enqueued;
+    await markPublicationEventEnqueued(
+      vacancy.id,
+      vacancy.next_notification_type,
+      vacancy.rules_version,
+    );
   }
   const [threeDay, oneDay, stale] = await Promise.all([
     enqueueReminders(3, "deadline_reminder_3d"),
@@ -64,22 +70,25 @@ export async function runNotificationCycle() {
   return summary;
 }
 
+let activeCycle = null;
+
+export function runNotificationCycle() {
+  if (activeCycle) return activeCycle;
+  activeCycle = performNotificationCycle().finally(() => {
+    activeCycle = null;
+  });
+  return activeCycle;
+}
+
 export function startNotificationScheduler() {
   if (!cron.validate(env.NOTIFICATION_CRON)) {
     throw new Error(`Invalid NOTIFICATION_CRON expression: ${env.NOTIFICATION_CRON}`);
   }
   return cron.schedule(env.NOTIFICATION_CRON, async () => {
-    if (running) {
-      console.warn("Skipping notification cycle because the previous cycle is still active");
-      return;
-    }
-    running = true;
     try {
       await runNotificationCycle();
     } catch (error) {
       console.error("Notification cycle failed", error);
-    } finally {
-      running = false;
     }
   });
 }

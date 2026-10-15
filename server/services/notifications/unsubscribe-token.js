@@ -2,6 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const tokenLifetimeSeconds = 60 * 60 * 24 * 365 * 5;
 
+export function resolveUnsubscribeSecret({ environment, unsubscribeSecret, fallbackSecret }) {
+  if (unsubscribeSecret) return unsubscribeSecret;
+  if (environment !== "production" && fallbackSecret) return fallbackSecret;
+  throw new Error("UNSUBSCRIBE_TOKEN_SECRET must be configured to sign unsubscribe links");
+}
+
 function signature(payload, secret) {
   return createHmac("sha256", secret).update(payload).digest("base64url");
 }

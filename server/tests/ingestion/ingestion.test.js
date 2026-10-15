@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { parseLlmJson, validateExtractedPost } from "../../services/ingestion/extraction-schema.js";
@@ -22,7 +23,7 @@ const confidenceThreshold = 0.75;
 
 for (let index = 0; index < 5; index += 1) {
   test(`fake sample notice ${index + 1} matches its expected extraction`, async () => {
-    const text = await readFile(`${fixtureDirectory}\\notice-${index + 1}.txt`, "utf8");
+    const text = await readFile(path.join(fixtureDirectory, `notice-${index + 1}.txt`), "utf8");
     const expected = expectedExtraction(index, text);
     const parsed = parseLlmJson(JSON.stringify(expected));
 
@@ -36,7 +37,7 @@ test("invalid LLM JSON is rejected", () => {
 });
 
 test("invalid calendar dates and insecure application links are rejected by the schema", async () => {
-  const text = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
+  const text = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
   const post = expectedExtraction(0, text).posts[0];
   post.publication_date.value = "2026-02-30";
   assert.throws(
@@ -54,8 +55,8 @@ test("invalid calendar dates and insecure application links are rejected by the 
 });
 
 test("one notice can contain multiple independently validated posts", async () => {
-  const firstText = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
-  const secondText = await readFile(`${fixtureDirectory}\\notice-2.txt`, "utf8");
+  const firstText = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
+  const secondText = await readFile(path.join(fixtureDirectory, "notice-2.txt"), "utf8");
   const posts = [
     expectedExtraction(0, firstText).posts[0],
     expectedExtraction(1, secondText).posts[0],
@@ -64,7 +65,7 @@ test("one notice can contain multiple independently validated posts", async () =
 });
 
 test("deadline earlier than application start is flagged for review", async () => {
-  const text = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
+  const text = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
   const post = expectedExtraction(0, text).posts[0];
   post.application_deadline.value = "2026-10-09";
   const assessment = validateExtractedPost(post, text, confidenceThreshold);
@@ -75,7 +76,7 @@ test("deadline earlier than application start is flagged for review", async () =
 });
 
 test("publication after application start is flagged as a conflicting date", async () => {
-  const text = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
+  const text = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
   const post = expectedExtraction(0, text).posts[0];
   post.publication_date.value = "2026-10-12";
   post.publication_date.source_quote =
@@ -87,7 +88,7 @@ test("publication after application start is flagged as a conflicting date", asy
 });
 
 test("age requirements without an official cutoff date are flagged for review", async () => {
-  const text = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
+  const text = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
   const post = expectedExtraction(0, text).posts[0];
   post.age_cutoff_date = {
     value: null,
@@ -102,7 +103,7 @@ test("age requirements without an official cutoff date are flagged for review", 
 });
 
 test("unsupported page or section evidence is flagged for review", async () => {
-  const text = await readFile(`${fixtureDirectory}\\notice-1.txt`, "utf8");
+  const text = await readFile(path.join(fixtureDirectory, "notice-1.txt"), "utf8");
   const post = expectedExtraction(0, text).posts[0];
   post.post_title.page_or_section = "Section 99 - Unsupported";
   const assessment = validateExtractedPost(post, text, confidenceThreshold);

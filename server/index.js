@@ -9,8 +9,12 @@ app.listen(env.PORT, () => {
     console.info(
       "Local view mode enabled; background ingestion and notification jobs are disabled",
     );
-  } else {
+  } else if (env.ENABLE_INTERNAL_CRON) {
     startIngestionScheduler();
     startNotificationScheduler();
+  } else {
+    console.info(
+      "Internal cron disabled; use the protected /api/internal endpoints with an external scheduler",
+    );
   }
 });

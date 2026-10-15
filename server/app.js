@@ -17,6 +17,7 @@ import { candidateDashboardRouter } from "./routes/candidate-dashboard.routes.js
 import { betaFeedbackRouter } from "./routes/beta-feedback.routes.js";
 import { resendWebhookRouter } from "./routes/resend-webhook.routes.js";
 import { publicVacancyRouter } from "./routes/public-vacancy.routes.js";
+import { internalCronRouter } from "./routes/internal-cron.routes.js";
 
 export const app = express();
 
@@ -47,6 +48,7 @@ app.use(
 );
 
 app.use("/api/health", healthRouter);
+app.use("/api/internal", internalCronRouter);
 app.use("/api/public/vacancies", publicVacancyRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/notification-preferences", notificationPreferencesRouter);

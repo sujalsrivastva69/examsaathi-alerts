@@ -1,9 +1,14 @@
 import { supabaseAdmin } from "../config/supabase.js";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
+import { evaluateVacancy } from "./matching/evaluate-vacancy.js";
+import { rebuildMatchExplanation } from "./matching/match-explanation.js";
 
 const matchStatuses = ["preliminary_match", "needs_review"];
 const legacyActionStatuses = ["interested", "started", "applied", "not_interested"];
+const profileColumns = env.PROFILE_MATCHING_FIELDS_ENABLED
+  ? "user_id, education, date_of_birth, state, job_preferences, category, discipline, experience_years"
+  : "user_id, education, date_of_birth, state, job_preferences";
 const vacancyColumns =
   "id, title, recruiting_organization, official_source_url, pdf_url, application_start_date, deadline, age_cutoff_date, rule_json, status, verification_status, last_verified_at, extraction_payload";
 
@@ -43,6 +48,12 @@ function throwStorageError(message, error) {
   throw new AppError(500, "CANDIDATE_DATA_ERROR", message);
 }
 
+function explanationAtReadTime(match, profile, vacancy) {
+  return profile
+    ? evaluateVacancy(profile, vacancy, vacancy.rule_json).explanation
+    : rebuildMatchExplanation(match, profile, vacancy);
+}
+
 export async function listCandidateMatches(userId) {
   const { data: matches, error: matchError } = await supabaseAdmin
     .from("user_vacancy_matches")
@@ -68,9 +79,24 @@ export async function listCandidateMatches(userId) {
   if (vacancyError) throwStorageError("Could not load matched vacancies", vacancyError);
 
   const vacancyById = new Map(vacancies.map((vacancy) => [vacancy.id, vacancy]));
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .select(profileColumns)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (profileError)
+    throwStorageError("Could not load candidate profile for match explanations", profileError);
   const visibleMatches = matches.flatMap((match) => {
     const vacancy = vacancyById.get(match.vacancy_id);
-    return vacancy ? [{ ...match, vacancy: withApplicationUrl(vacancy) }] : [];
+    return vacancy
+      ? [
+          {
+            ...match,
+            explanation: explanationAtReadTime(match, profile, vacancy),
+            vacancy: withApplicationUrl(vacancy),
+          },
+        ]
+      : [];
   });
 
   const { data: actions, error: actionError } = await supabaseAdmin
@@ -122,7 +148,7 @@ export async function getCandidateMatch(userId, vacancyId) {
   if (vacancyError) throwStorageError("Could not load vacancy details", vacancyError);
   if (!vacancy) throw new AppError(404, "VACANCY_NOT_FOUND", "This vacancy is not available");
 
-  const [changeResult, actionResult, historyResult] = await Promise.all([
+  const [changeResult, actionResult, historyResult, profileResult] = await Promise.all([
     supabaseAdmin
       .from("vacancy_changes")
       .select("id, field_name, old_value, new_value, changed_at")
@@ -142,6 +168,7 @@ export async function getCandidateMatch(userId, vacancyId) {
       .eq("vacancy_id", vacancyId)
       .order("changed_at", { ascending: false })
       .limit(100),
+    supabaseAdmin.from("profiles").select(profileColumns).eq("user_id", userId).maybeSingle(),
   ]);
   if (changeResult.error)
     throwStorageError("Could not load vacancy correction history", changeResult.error);
@@ -149,10 +176,19 @@ export async function getCandidateMatch(userId, vacancyId) {
     throwStorageError("Could not load application tracker status", actionResult.error);
   if (historyResult.error)
     throwStorageError("Could not load application tracker history", historyResult.error);
+  if (profileResult.error)
+    throwStorageError(
+      "Could not load candidate profile for match explanations",
+      profileResult.error,
+    );
 
   return {
     trackerLifecycleEnabled: env.TRACKER_LIFECYCLE_ENABLED,
-    match: { ...match, vacancy: withApplicationUrl(vacancy) },
+    match: {
+      ...match,
+      explanation: explanationAtReadTime(match, profileResult.data, vacancy),
+      vacancy: withApplicationUrl(vacancy),
+    },
     changes: changeResult.data,
     action: normalizeAction(actionResult.data),
     actionHistory: historyResult.data,

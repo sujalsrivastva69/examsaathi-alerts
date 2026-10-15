@@ -79,10 +79,13 @@ describe("evaluateVacancy", () => {
     );
   });
 
-  it("does not treat a diploma as a graduate degree by default", () => {
-    expect(
-      evaluate({ education: "diploma" }, {}, { qualification_level: "undergraduate" }).failed,
-    ).toContain("qualification");
+  it("flags a diploma candidate versus a graduate requirement for review", () => {
+    const result = evaluate({ education: "diploma" }, {}, { qualification_level: "undergraduate" });
+    expect(result.status).toBe("needs_review");
+    expect(result.missing).toContain("qualification");
+    expect(result.failed).not.toContain("qualification");
+    expect(result.explanation.qualification.reason.en).toContain("manual review");
+    expect(result.explanation.qualification.reason.hi).toContain("मैन्युअल समीक्षा");
   });
 
   it("matches ITI only when the rule explicitly requires ITI", () => {
@@ -92,8 +95,34 @@ describe("evaluateVacancy", () => {
     ).toBe("matched");
   });
 
-  it("does not treat ITI as an undergraduate degree", () => {
-    expect(evaluate({ education: "iti" }).failed).toContain("qualification");
+  it("flags ITI versus an undergraduate requirement for review", () => {
+    const result = evaluate({ education: "iti" });
+    expect(result.missing).toContain("qualification");
+    expect(result.explanation.qualification.status).toBe("unknown");
+  });
+
+  it("flags graduate-level and diploma/ITI comparisons for review in both directions", () => {
+    for (const candidateEducation of ["undergraduate", "postgraduate", "doctoral"]) {
+      for (const qualification_level of ["diploma", "iti"]) {
+        const graduateCandidate = evaluate(
+          { education: candidateEducation },
+          {},
+          { qualification_level },
+        );
+        const tradeCandidate = evaluate(
+          { education: qualification_level },
+          {},
+          { qualification_level: candidateEducation },
+        );
+
+        for (const result of [graduateCandidate, tradeCandidate]) {
+          expect(result.status).toBe("needs_review");
+          expect(result.missing).toContain("qualification");
+          expect(result.failed).not.toContain("qualification");
+          expect(result.explanation.qualification.status).toBe("unknown");
+        }
+      }
+    }
   });
 
   it("accepts an explicitly equivalent qualification", () => {
@@ -107,7 +136,7 @@ describe("evaluateVacancy", () => {
   });
 
   it("does not infer equivalence when the rule does not say so", () => {
-    expect(evaluate({ education: "diploma" }).failed).toContain("qualification");
+    expect(evaluate({ education: "diploma" }).missing).toContain("qualification");
   });
 
   it("marks missing education for review", () => {

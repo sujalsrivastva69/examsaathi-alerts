@@ -1,11 +1,12 @@
 import { supabaseAdmin } from "../../config/supabase.js";
 import { env } from "../../config/env.js";
-import { createUnsubscribeToken } from "./unsubscribe-token.js";
+import { createUnsubscribeToken, resolveUnsubscribeSecret } from "./unsubscribe-token.js";
 import { renderVacancyEmail } from "./email-templates.js";
 import { shouldSuppressDeadlineReminder } from "./reminder-policy.js";
 
 const reminderTypes = new Set(["deadline_reminder_3d", "deadline_reminder_1d"]);
 const maxBatchSize = 25;
+const maxProcessingTimeMs = 4 * 60 * 1000;
 const deliveryTimeZone = "Asia/Kolkata";
 
 function dateInIndia(date) {
@@ -27,7 +28,7 @@ function reminderIsCurrent(item, deadline) {
   return days === (item.notification_type === "deadline_reminder_3d" ? 3 : 1);
 }
 
-function nextDeliveryWindow(frequency, now = new Date()) {
+export function nextDeliveryWindow(frequency, now = new Date()) {
   if (frequency === "immediate") return now;
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: deliveryTimeZone,
@@ -40,12 +41,16 @@ function nextDeliveryWindow(frequency, now = new Date()) {
   }).formatToParts(now);
   const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
   const windowDate = new Date(`${values.year}-${values.month}-${values.day}T09:00:00+05:30`);
-  const isMonday = values.weekday === "Mon";
-  if (frequency === "weekly" && !isMonday) {
-    windowDate.setUTCDate(windowDate.getUTCDate() + ((8 - windowDate.getUTCDay()) % 7 || 7));
-  } else if (now.getTime() >= windowDate.getTime()) {
-    windowDate.setUTCDate(windowDate.getUTCDate() + (frequency === "weekly" ? 7 : 1));
+  if (frequency === "daily") {
+    return now.getTime() >= windowDate.getTime() ? now : windowDate;
   }
+
+  const localDate = new Date(`${values.year}-${values.month}-${values.day}T00:00:00Z`);
+  if (values.weekday === "Mon") {
+    return now.getTime() >= windowDate.getTime() ? now : windowDate;
+  }
+  const daysUntilMonday = (8 - localDate.getUTCDay()) % 7 || 7;
+  windowDate.setUTCDate(windowDate.getUTCDate() + daysUntilMonday);
   return windowDate;
 }
 
@@ -140,15 +145,13 @@ function applicationUrl(vacancy, snapshot) {
   }
 }
 
-async function sendViaResend(email, message, idempotencyKey) {
+export async function sendViaResend(email, message, idempotencyKey) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
       "Idempotency-Key": idempotencyKey,
-      "List-Unsubscribe": `<${message.unsubscribeUrl}>`,
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     },
     body: JSON.stringify({
       from: `ExamSaathi Alerts <${env.RESEND_FROM_EMAIL}>`,
@@ -156,6 +159,10 @@ async function sendViaResend(email, message, idempotencyKey) {
       subject: message.subject,
       html: message.html,
       text: message.text,
+      headers: {
+        "List-Unsubscribe": `<${message.unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
     }),
     signal: AbortSignal.timeout(20_000),
   });
@@ -245,7 +252,11 @@ async function processItem(item) {
     const email = authResult.user?.email;
     if (!email) throw new Error("Recipient account has no email address");
 
-    const tokenSecret = env.UNSUBSCRIBE_TOKEN_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY;
+    const tokenSecret = resolveUnsubscribeSecret({
+      environment: env.NODE_ENV,
+      unsubscribeSecret: env.UNSUBSCRIBE_TOKEN_SECRET,
+      fallbackSecret: env.SUPABASE_SERVICE_ROLE_KEY,
+    });
     const token = createUnsubscribeToken(item.user_id, tokenSecret);
     const unsubscribeUrl = new URL(`/api/unsubscribe/${token}`, env.API_URL ?? env.APP_URL).href;
     const snapshot = item.match_snapshot?.vacancy ?? {};
@@ -304,11 +315,59 @@ async function processItem(item) {
   }
 }
 
+export async function drainNotificationBatches({
+  claimBatch,
+  processItem: processQueuedItem,
+  releaseItems,
+  now = Date.now,
+  timeBudgetMs = maxProcessingTimeMs,
+}) {
+  const startedAt = now();
+  let processed = 0;
+  while (now() - startedAt < timeBudgetMs) {
+    const items = await claimBatch();
+    if (items.length === 0) break;
+    let index = 0;
+    for (; index < items.length; index += 1) {
+      if (now() - startedAt >= timeBudgetMs) break;
+      await processQueuedItem(items[index]);
+      processed += 1;
+    }
+    if (index < items.length) {
+      await releaseItems(items.slice(index));
+      break;
+    }
+  }
+  return { processed };
+}
+
+async function releaseClaimedItems(items) {
+  for (const item of items) {
+    const { error } = await supabaseAdmin
+      .from("notification_queue")
+      .update({
+        status: "pending",
+        attempt_count: Math.max(item.attempt_count - 1, 0),
+        available_at: new Date().toISOString(),
+        locked_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", item.id)
+      .eq("status", "processing");
+    if (error) throw error;
+  }
+}
+
 export async function processNotificationBatch() {
-  const { data: items, error } = await supabaseAdmin.rpc("claim_notification_batch", {
-    p_limit: maxBatchSize,
+  return drainNotificationBatches({
+    claimBatch: async () => {
+      const { data, error } = await supabaseAdmin.rpc("claim_notification_batch", {
+        p_limit: maxBatchSize,
+      });
+      if (error) throw error;
+      return data;
+    },
+    processItem: processItem,
+    releaseItems: releaseClaimedItems,
   });
-  if (error) throw error;
-  for (const item of items) await processItem(item);
-  return { processed: items.length };
 }

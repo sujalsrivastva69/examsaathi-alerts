@@ -1,9 +1,14 @@
 import { supabaseAdmin } from "../../config/supabase.js";
+import { env } from "../../config/env.js";
 import { notificationIdempotencyKey } from "./idempotency.js";
-import { shouldSuppressDeadlineReminder } from "./reminder-policy.js";
+import { evaluateVacancy } from "../matching/evaluate-vacancy.js";
+import { filterReminderAudience } from "./notification-policy.js";
 
 const reminders = new Set(["deadline_reminder_3d", "deadline_reminder_1d"]);
 const pageSize = 500;
+const profileColumns = env.PROFILE_MATCHING_FIELDS_ENABLED
+  ? "user_id, education, date_of_birth, state, job_preferences, category, discipline, experience_years"
+  : "user_id, education, date_of_birth, state, job_preferences";
 
 async function readAllRows(queryFactory) {
   const rows = [];
@@ -23,7 +28,7 @@ export async function enqueueVacancyNotifications(
   const { data: vacancy, error: vacancyError } = await supabaseAdmin
     .from("vacancies")
     .select(
-      "id, rules_version, deadline, title, recruiting_organization, official_source_url, pdf_url, last_verified_at, extraction_payload",
+      "id, rules_version, deadline, title, recruiting_organization, official_source_url, pdf_url, last_verified_at, extraction_payload, rule_json",
     )
     .eq("id", vacancyId)
     .maybeSingle();
@@ -36,7 +41,7 @@ export async function enqueueVacancyNotifications(
     (await readAllRows(() =>
       supabaseAdmin
         .from("user_vacancy_matches")
-        .select("user_id, status, explanation, rules_version")
+        .select("user_id, status, missing, failed, rules_version")
         .eq("vacancy_id", vacancyId)
         .in("status", ["preliminary_match", "needs_review"])
         .order("user_id"),
@@ -46,12 +51,25 @@ export async function enqueueVacancyNotifications(
   }
   if (!matches.length) return { enqueued: 0 };
 
+  if (reminders.has(notificationType)) {
+    const actions = await readAllRows(() =>
+      supabaseAdmin
+        .from("user_vacancy_actions")
+        .select("user_id, status")
+        .eq("vacancy_id", vacancyId)
+        .order("user_id"),
+    );
+    matches = filterReminderAudience(matches, actions);
+  }
+  if (!matches.length) return { enqueued: 0 };
+
   const userIds = [...new Set(matches.map((match) => match.user_id))];
   const preferences = [];
+  const profiles = [];
   for (let offset = 0; offset < userIds.length; offset += pageSize) {
     const ids = userIds.slice(offset, offset + pageSize);
-    preferences.push(
-      ...(await readAllRows(() =>
+    const [preferenceRows, profileRows] = await Promise.all([
+      readAllRows(() =>
         supabaseAdmin
           .from("notification_preferences")
           .select("user_id, email_enabled, notify_needs_review, language, unsubscribed_at")
@@ -59,12 +77,18 @@ export async function enqueueVacancyNotifications(
           .eq("email_enabled", true)
           .is("unsubscribed_at", null)
           .order("user_id"),
-      )),
-    );
+      ),
+      readAllRows(() =>
+        supabaseAdmin.from("profiles").select(profileColumns).in("user_id", ids).order("user_id"),
+      ),
+    ]);
+    preferences.push(...preferenceRows);
+    profiles.push(...profileRows);
   }
   const preferenceByUser = new Map(
     preferences.map((preference) => [preference.user_id, preference]),
   );
+  const profileByUser = new Map(profiles.map((profile) => [profile.user_id, profile]));
   const applicationUrl =
     vacancy.extraction_payload?.post?.application_url?.value ||
     vacancy.extraction_payload?.post?.application_url ||
@@ -75,17 +99,11 @@ export async function enqueueVacancyNotifications(
     const preferencesForUser = preferenceByUser.get(match.user_id);
     if (!preferencesForUser) continue;
     if (match.status === "needs_review" && !preferencesForUser.notify_needs_review) continue;
-    if (reminders.has(notificationType)) {
-      const { data: action, error: actionError } = await supabaseAdmin
-        .from("user_vacancy_actions")
-        .select("status")
-        .eq("user_id", match.user_id)
-        .eq("vacancy_id", vacancyId)
-        .maybeSingle();
-      if (actionError) throw actionError;
-      if (action && shouldSuppressDeadlineReminder(action.status)) continue;
-    }
-
+    const explanation = evaluateVacancy(
+      profileByUser.get(match.user_id),
+      vacancy,
+      vacancy.extraction_payload?.rule_json ?? vacancy.rule_json,
+    ).explanation;
     records.push({
       user_id: match.user_id,
       vacancy_id: vacancyId,
@@ -99,7 +117,9 @@ export async function enqueueVacancyNotifications(
       rules_version: version,
       match_snapshot: {
         status: match.status,
-        explanation: match.explanation,
+        explanation,
+        missing: match.missing ?? [],
+        failed: match.failed ?? [],
         rules_version: match.rules_version,
         vacancy: {
           title: vacancy.title,
@@ -129,7 +149,7 @@ export async function getNotificationAudience(vacancyId) {
   return readAllRows(() =>
     supabaseAdmin
       .from("user_vacancy_matches")
-      .select("user_id, status, explanation, rules_version")
+      .select("user_id, status, missing, failed, rules_version")
       .eq("vacancy_id", vacancyId)
       .in("status", ["preliminary_match", "needs_review"])
       .order("user_id"),
@@ -184,12 +204,39 @@ export async function getPublishedVacancies() {
   return readAllRows(() =>
     supabaseAdmin
       .from("vacancies")
-      .select("id, rules_version, next_notification_type")
+      .select(
+        "id, rules_version, next_notification_type, last_enqueued_notification_type, last_enqueued_rules_version",
+      )
       .eq("status", "verified_open")
       .eq("verification_status", "verified")
       .is("archived_at", null)
+      .gte("deadline", dateInIndia())
       .order("id"),
   );
+}
+
+function dateInIndia(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export async function markPublicationEventEnqueued(vacancyId, notificationType, rulesVersion) {
+  const { error } = await supabaseAdmin
+    .from("vacancies")
+    .update({
+      last_enqueued_notification_type: notificationType,
+      last_enqueued_rules_version: rulesVersion,
+    })
+    .eq("id", vacancyId)
+    .eq("next_notification_type", notificationType)
+    .eq("rules_version", rulesVersion);
+  if (error) throw error;
 }
 
 export async function flagStaleVacancies() {

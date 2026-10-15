@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch index.js",
     "start": "node index.js",
-    "test": "node --test tests/ingestion/ingestion.test.js tests/notifications/notifications.test.js && vitest run tests/matching tests/tools"
+    "test": "node --import ./tests/setup-env.js --test tests/config/env.test.js tests/cron/internal-cron.test.js tests/ingestion/ingestion.test.js tests/migration-contract.test.js tests/notifications/notifications.test.js tests/notifications/resend-webhook.test.js && vitest run tests/matching tests/tools"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.47.10",
@@ -18,7 +18,7 @@
     "helmet": "^8.0.0",
     "cheerio": "^1.0.0",
     "node-cron": "^4.2.1",
-    "pdf-parse": "^1.1.1",
+    "pdf-parse": "^1.1.4",
     "zod": "^3.24.1"
   }
 }

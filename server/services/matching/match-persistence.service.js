@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "../../config/supabase.js";
 import { env } from "../../config/env.js";
-import { evaluateVacancy } from "./evaluate-vacancy.js";
+import { buildCompactMatch, isCurrentPublicVacancy } from "./match-persistence-policy.js";
 
 const pageSize = 500;
 const matchColumns = env.PROFILE_MATCHING_FIELDS_ENABLED
@@ -8,6 +8,17 @@ const matchColumns = env.PROFILE_MATCHING_FIELDS_ENABLED
   : "user_id, education, date_of_birth, state, job_preferences";
 const vacancyColumns =
   "id, rules_version, rule_json, age_cutoff_date, deadline, status, verification_status, last_verified_at";
+
+function dateInIndia(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 async function readAllRows(queryFactory) {
   const rows = [];
@@ -31,20 +42,6 @@ async function saveEvaluations(evaluations) {
   return evaluations.length;
 }
 
-function makeMatch(userId, candidate, vacancy) {
-  const result = evaluateVacancy(candidate, vacancy, vacancy.rule_json);
-  return {
-    user_id: userId,
-    vacancy_id: vacancy.id,
-    status: result.status,
-    explanation: result.explanation,
-    missing: result.missing,
-    failed: result.failed,
-    rules_version: result.rulesVersion,
-    evaluated_at: new Date().toISOString(),
-  };
-}
-
 export async function reevaluateMatchesForUser(userId) {
   const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
@@ -54,10 +51,19 @@ export async function reevaluateMatchesForUser(userId) {
   if (profileError) throw profileError;
   if (!profile) throw new Error(`Cannot reevaluate matches: profile ${userId} was not found`);
 
-  const vacancies = await readAllRows(() =>
-    supabaseAdmin.from("vacancies").select(vacancyColumns).is("archived_at", null).order("id"),
-  );
-  const matches = vacancies.map((vacancy) => makeMatch(userId, profile, vacancy));
+  const vacancies = (
+    await readAllRows(() =>
+      supabaseAdmin
+        .from("vacancies")
+        .select(`${vacancyColumns}, archived_at`)
+        .eq("status", "verified_open")
+        .eq("verification_status", "verified")
+        .is("archived_at", null)
+        .gte("deadline", dateInIndia())
+        .order("id"),
+    )
+  ).filter((vacancy) => isCurrentPublicVacancy(vacancy, dateInIndia()));
+  const matches = vacancies.map((vacancy) => buildCompactMatch(userId, profile, vacancy));
   return { evaluated: await saveEvaluations(matches) };
 }
 
@@ -73,6 +79,6 @@ export async function reevaluateMatchesForVacancy(vacancyId) {
   const profiles = await readAllRows(() =>
     supabaseAdmin.from("profiles").select(matchColumns).order("user_id"),
   );
-  const matches = profiles.map((profile) => makeMatch(profile.user_id, profile, vacancy));
+  const matches = profiles.map((profile) => buildCompactMatch(profile.user_id, profile, vacancy));
   return { evaluated: await saveEvaluations(matches) };
 }

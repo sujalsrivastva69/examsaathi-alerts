@@ -1,9 +1,13 @@
 import { env } from "../../config/env.js";
 import { supabaseAdmin } from "../../config/supabase.js";
-import { verifyUnsubscribeToken } from "./unsubscribe-token.js";
+import { resolveUnsubscribeSecret, verifyUnsubscribeToken } from "./unsubscribe-token.js";
 
 export async function unsubscribeWithToken(token) {
-  const secret = env.UNSUBSCRIBE_TOKEN_SECRET ?? env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = resolveUnsubscribeSecret({
+    environment: env.NODE_ENV,
+    unsubscribeSecret: env.UNSUBSCRIBE_TOKEN_SECRET,
+    fallbackSecret: env.SUPABASE_SERVICE_ROLE_KEY,
+  });
   const verified = verifyUnsubscribeToken(token, secret);
   if (!verified) return false;
 

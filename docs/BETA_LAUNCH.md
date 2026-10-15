@@ -29,39 +29,41 @@ Authentication signup and login use Supabase Auth directly from the browser, not
    ```
 
 6. Check RLS is enabled and the expected policies/grants exist for `profiles`, `notification_preferences`, `user_vacancy_matches`, `user_vacancy_actions`, `user_vacancy_action_history`, and `beta_feedback`. Confirm the queue, notification logs, feedback submissions, and provider event tables have no end-user read policies.
-7. Keep one API instance for beta if using the in-process cron scheduler. Do not configure more than one server replica until schedulers are moved to a single worker or distributed lease.
+7. If opting into the in-process cron scheduler, keep one API instance for beta. For sleeping/free hosts, use the protected external cron endpoints instead; do not configure multiple in-process scheduler replicas.
 
 ## 2. Configure and deploy the Express API (Render)
 
 Deploy the repository root so npm workspaces and the root lockfile are available. The root `render.yaml` is a Blueprint starter configuration; import it from the Render dashboard and enter the environment values there. It keeps vacancy ingestion and email delivery in dry-run mode by default.
 
-The service runs the ingestion and notification schedulers in-process, so keep one instance. Render's free web service can sleep while idle; scheduled ingestion is not dependable while it is asleep. Use an always-on instance or a separate reliable scheduler before promising timely vacancy or deadline alerts.
+`ENABLE_INTERNAL_CRON` defaults to `false`. On Render's free plan, keep it false and configure an external cron provider to POST to `/api/internal/run-notifications` every five minutes and `/api/internal/run-ingestion` every four hours. Set a random `CRON_SECRET` of at least 32 characters and configure the provider to send it in the `x-cron-secret` header; never put the secret in the request URL. A sleeping free service may have cold-start delays, so configure retries/timeouts with the provider and do not promise exact delivery times. Set `ENABLE_INTERNAL_CRON=true` only on an always-on single API instance when using the in-process schedules.
 
 Set these **server-only** environment variables in the hosting provider:
 
-| Variable                    | Beta value                                                                                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `NODE_ENV`                  | `production`                                                                                                                                           |
-| `PORT`                      | Provider-assigned port; Render injects it                                                                                                              |
-| `TRUST_PROXY_HOPS`          | `1` only after confirming the host terminates requests through exactly one trusted proxy and overwrites/normalizes forwarded IP headers; otherwise `0` |
-| `APP_URL`                   | Canonical browser origin, e.g. `https://beta.example.in` (no trailing slash)                                                                           |
-| `API_URL`                   | Public API origin, e.g. `https://api-beta.example.in` (no trailing slash)                                                                              |
-| `SUPABASE_URL`              | Project URL from Supabase                                                                                                                              |
-| `SUPABASE_ANON_KEY`         | Supabase publishable/anon key; still server config, not a service credential                                                                           |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service-role secret, server only                                                                                                                       |
-| `RESEND_API_KEY`            | Resend API key, server only                                                                                                                            |
-| `RESEND_FROM_EMAIL`         | Verified sender, e.g. `alerts@example.in`                                                                                                              |
-| `RESEND_WEBHOOK_SECRET`     | Resend webhook signing secret (`whsec_...`)                                                                                                            |
-| `UNSUBSCRIBE_TOKEN_SECRET`  | Random secret of at least 32 characters; keep stable across deploys                                                                                    |
-| `NOTIFICATION_DRY_RUN`      | `true` until end-to-end email checks pass; `false` only after approval                                                                                 |
-| `NOTIFICATION_CRON`         | `*/5 * * * *` for beta; in a disposable E2E project use `* * * * *`                                                                                    |
-| `INGESTION_DRY_RUN`         | `true` until source access permission, parsing, and staging review are confirmed                                                                       |
-| `INGESTION_CRON`            | `0 */4 * * *`                                                                                                                                          |
-| `LLM_PROVIDER`              | `openai` if live ingestion is explicitly enabled                                                                                                       |
-| `LLM_API_KEY`               | Optional until live ingestion; server secret                                                                                                           |
-| `LLM_MODEL`                 | `gpt-4o-mini` or an approved compatible model                                                                                                          |
-| `LLM_BASE_URL`              | Optional; only for an approved OpenAI-compatible endpoint                                                                                              |
-| `ADMIN_ALERT_EMAIL`         | Monitored administrator mailbox; optional until ingestion alerts are enabled                                                                           |
+| Variable                    | Beta value                                                                                                        |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                  | `production`                                                                                                      |
+| `PORT`                      | Provider-assigned port; Render injects it                                                                         |
+| `TRUST_PROXY_HOPS`          | `1` for the Render deployment configured here; verify the actual trusted proxy chain if changing hosts            |
+| `ENABLE_INTERNAL_CRON`      | `false` when an external cron provider calls the protected endpoints; `true` only on an always-on single instance |
+| `CRON_SECRET`               | Random server-only secret, at least 32 characters; set in the external cron provider as `x-cron-secret` header    |
+| `APP_URL`                   | Canonical browser origin, e.g. `https://beta.example.in` (no trailing slash)                                      |
+| `API_URL`                   | Public API origin, e.g. `https://api-beta.example.in` (no trailing slash)                                         |
+| `SUPABASE_URL`              | Project URL from Supabase                                                                                         |
+| `SUPABASE_ANON_KEY`         | Supabase publishable/anon key; still server config, not a service credential                                      |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service-role secret, server only                                                                                  |
+| `RESEND_API_KEY`            | Resend API key, server only                                                                                       |
+| `RESEND_FROM_EMAIL`         | Verified sender, e.g. `alerts@example.in`                                                                         |
+| `RESEND_WEBHOOK_SECRET`     | Resend webhook signing secret (`whsec_...`)                                                                       |
+| `UNSUBSCRIBE_TOKEN_SECRET`  | Required: random secret of at least 32 characters; keep stable across deploys                                     |
+| `NOTIFICATION_DRY_RUN`      | `true` until end-to-end email checks pass; `false` only after approval                                            |
+| `NOTIFICATION_CRON`         | `*/5 * * * *` for the in-process scheduler; in a disposable E2E project use `* * * * *`                           |
+| `INGESTION_DRY_RUN`         | `true` until source access permission, parsing, and staging review are confirmed                                  |
+| `INGESTION_CRON`            | `0 */4 * * *` for the in-process scheduler                                                                        |
+| `LLM_PROVIDER`              | `openai` if live ingestion is explicitly enabled                                                                  |
+| `LLM_API_KEY`               | Optional until live ingestion; server secret                                                                      |
+| `LLM_MODEL`                 | `gpt-4o-mini` or an approved compatible model                                                                     |
+| `LLM_BASE_URL`              | Optional; only for an approved OpenAI-compatible endpoint                                                         |
+| `ADMIN_ALERT_EMAIL`         | Monitored administrator mailbox; optional until ingestion alerts are enabled                                      |
 
 Use `NOTIFICATION_DRY_RUN=true` in the first deployment. Ingestion remains in dry-run until each source's access method and permission are confirmed, parsing is tested against permitted official examples, and an operator explicitly sets `INGESTION_DRY_RUN=false`. The SSC and Employment News registry entries currently remain disabled because robots.txt returned 404 and the reviewed policy/disclaimer material did not establish automated-fetch permission. The SSC notices feed is also unverified. Do not claim compatibility or enable either source without that review. Scanned PDFs and extraction failures are saved for manual entry; the pipeline does not submit notices to OCR. Do not put service-role, Resend, LLM, or webhook signing secrets in Vercel/Vite variables.
 
